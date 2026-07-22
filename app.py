@@ -56,6 +56,13 @@ div[data-testid="stSegmentedControl"] button:hover{background:#EAF1F6!important;
 div[data-testid="stSegmentedControl"] button[aria-checked="true"]{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important;}
 .wm{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.05;overflow:hidden;}
 .wm span{position:absolute;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1b3a4b;transform:rotate(-30deg);white-space:nowrap;}
+/* Light-widget safety net (real theme comes from .streamlit/config.toml) */
+.stTextInput input,.stNumberInput input,.stTextArea textarea{background:#fff!important;color:#0E1B24!important;border:1px solid var(--line)!important;}
+div[data-baseweb="select"]>div{background:#fff!important;color:#0E1B24!important;border-color:var(--line)!important;}
+[data-baseweb="tag"]{background:var(--blue)!important;color:#fff!important;}
+[data-baseweb="popover"] li{background:#fff!important;color:#0E1B24!important;}
+[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] *{color:#3A4C57!important;}
+label,.stMarkdown p{color:var(--ink2);}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -108,6 +115,10 @@ def header():
             st.markdown(f'<div class="who" style="text-align:right"><b>{ss.user["name"]}</b> · {ss.user["role"]}'
                         f'<div class="lock">🔒 Closed group · watermarked · {ss.user["email"]}</div></div>',
                         unsafe_allow_html=True)
+            lc = st.columns([2, 1])
+            if lc[1].button("Log out", key="logout_btn", use_container_width=True):
+                ss.clear()
+                st.rerun()
     st.markdown('<hr style="margin:4px 0 14px;border:none;border-top:1px solid var(--line)">', unsafe_allow_html=True)
 
 
@@ -196,16 +207,13 @@ PHARMA_STEPS = [("form", "1 · Request"), ("options", "2 · Platform options"), 
 
 
 def nav():
+    # Shaily roles are locked to their own dashboard (no cross-view toggle).
     if ss.is_shaily:
-        ss.dash_tab = st.segmented_control("view", ["BD Manager", "Workforce view"],
-                                           default=ss.dash_tab, label_visibility="collapsed")
         return
+    # Pharma customer: request → options → cost (no access to internal BD dashboards).
     labels = [lbl for _, lbl in PHARMA_STEPS]
-    cur = next(lbl for key, lbl in PHARMA_STEPS if key == ss.screen) if ss.screen in dict(PHARMA_STEPS) else labels[0]
-    pick = st.segmented_control("nav", labels + ["📊 Dashboards"], default=(cur if ss.screen != "dash" else "📊 Dashboards"),
-                                label_visibility="collapsed")
-    if pick == "📊 Dashboards" and ss.screen != "dash":
-        ss.screen = "dash"; st.rerun()
+    cur = next((lbl for key, lbl in PHARMA_STEPS if key == ss.screen), labels[0])
+    pick = st.segmented_control("nav", labels, default=cur, label_visibility="collapsed")
     for key, lbl in PHARMA_STEPS:
         if pick == lbl and ss.screen != key:
             ss.screen = key; st.rerun()
@@ -327,13 +335,19 @@ def screen_options():
                "Three option sets are proposed — pick the one to take forward.")
     tables = _option_tables()
     for opt, cls in [(1, "o1"), (2, "o2"), (3, "o3")]:
-        st.markdown(f'<span class="opttag {cls}">Option {opt}</span>', unsafe_allow_html=True)
+        selected = ss.chosen_option == opt
+        badge = f'<span class="opttag {cls}">Option {opt}</span>'
+        if selected:
+            badge += ' <span class="pill" style="color:var(--forest)">✓ selected</span>'
+        st.markdown(badge, unsafe_allow_html=True)
         st.dataframe(tables[opt], use_container_width=True, hide_index=True)
-
-    ss.chosen_option = int(st.segmented_control("Proceed with", [1, 2, 3],
-                                                default=ss.chosen_option, format_func=lambda x: f"Option {x}") or 1)
-    if st.button("Proceed to cost →", type="primary"):
-        ss.screen = "cost"; st.rerun()
+        b = st.columns([1, 3])
+        if b[0].button(f"Select Option {opt} →", key=f"select_opt_{opt}",
+                       type="primary" if selected else "secondary", use_container_width=True):
+            ss.chosen_option = opt
+            ss.screen = "cost"
+            st.rerun()
+        st.write("")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -427,10 +441,11 @@ def _heatmap(matrix_dict, rows, cols, title, colorscale):
 
 
 def screen_dash():
-    if ss.dash_tab == "BD Manager":
-        dash_manager()
-    else:
+    # Role-locked: BD Manager sees the command centre; Workforce sees only their own view.
+    if ss.user and "Workforce" in ss.user["role"]:
         dash_workforce()
+    else:
+        dash_manager()
 
 
 def dash_manager():
