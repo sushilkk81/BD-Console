@@ -10,19 +10,95 @@ BRAND = {
     "minor": "#2E7D46", "moderate": "#E5883B", "major": "#C0392B",
 }
 
+# ── Device-mechanism layer (curated; FDA Orange Book device-patent grounded) ──
+# Drive families reflect the PATENT-DISCLOSED mechanism, not the apparent one.
+DRIVE_MANUAL      = "manual_dial"     # dial/geared pen, manual button-push force
+DRIVE_TORSION     = "torsion_spring"  # torsion-spring auto-delivery pen (e.g. FlexTouch)
+DRIVE_SPRING_ONE  = "spring_single"   # single-dose spring pen
+DRIVE_SPRING_AI   = "spring_ai"       # spring-driven auto-injector
+DRIVE_SPRING_AIHV = "spring_ai_hv"    # high-force spring AI (viscous mAb)
+DRIVE_ON_BODY     = "on_body"         # on-body / electromechanical
+
+# Shaily platform `mech` label → drive family
+PLATFORM_MECH_DRIVE = {
+    "Push-Pull": DRIVE_MANUAL, "Geared Pen": DRIVE_MANUAL,
+    "Clutch Pen": DRIVE_MANUAL, "Pulley": DRIVE_MANUAL,
+    "Torsion Spring": DRIVE_TORSION,
+    "3-step AI": DRIVE_SPRING_AI, "2-step AI": DRIVE_SPRING_AI,
+    "2-step AI (high visc.)": DRIVE_SPRING_AIHV,
+    "On-body device": DRIVE_ON_BODY,
+}
+
+
+def _norm_archetype(s: str) -> str:
+    """Normalise 'Auto-Injector' / 'Autoinjector' / 'Pen Injector' to a comparable token."""
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
+def _dose_from_resolution(res: str) -> str:
+    r = res.lower()
+    if "variable" in r:
+        return "variable"
+    if "fixed" in r:
+        return "fixed"
+    return "na"
+
+
+def platform_signature(p: dict) -> dict:
+    """Mechanism signature for a Shaily platform, derived from existing sheet fields."""
+    return {
+        "archetype": _norm_archetype(p["cls"]),
+        "drive": PLATFORM_MECH_DRIVE.get(p["mech"], ""),
+        "dose": _dose_from_resolution(p["resolution"]),
+    }
+
+
 # ---- Reference products (public-literature derived) ----
 REFERENCE_PRODUCTS = {
-    "Ozempic":   dict(molecule="Semaglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.4, cartridge="3 mL", strengths=["0.25 mg", "0.5 mg", "1 mg", "2 mg"], visc_ref="DailyMed SmPC (NDC 0169-4181); aqueous GLP-1 solution"),
-    "Wegovy":    dict(molecule="Semaglutide", device="Auto-Injector", dose="fixed", visc="water", visc_val=1.6, cartridge="1 mL PFS", strengths=["0.25 mg", "0.5 mg", "1 mg", "1.7 mg", "2.4 mg"], visc_ref="FDA label 215256; single-dose AI"),
-    "Trulicity": dict(molecule="Dulaglutide", device="Auto-Injector", dose="fixed", visc="higher", visc_val=6.2, cartridge="1 mL PFS", strengths=["0.75 mg", "1.5 mg", "3 mg", "4.5 mg"], visc_ref="Lilly label; mAb fusion, elevated viscosity"),
-    "Mounjaro":  dict(molecule="Tirzepatide", device="Auto-Injector", dose="fixed", visc="higher", visc_val=5.0, cartridge="1 mL PFS", strengths=["2.5 mg", "5 mg", "7.5 mg", "10 mg", "12.5 mg", "15 mg"], visc_ref="Lilly KwikPen literature"),
-    "Victoza":   dict(molecule="Liraglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.5, cartridge="3 mL", strengths=["0.6 mg", "1.2 mg", "1.8 mg"], visc_ref="EMA SmPC; multi-dose pen"),
-    "Saxenda":   dict(molecule="Liraglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.5, cartridge="3 mL", strengths=["0.6 mg", "1.2 mg", "1.8 mg", "2.4 mg", "3 mg"], visc_ref="EMA SmPC; weight-management pen"),
-    "Toujeo":    dict(molecule="Insulin glargine U300", device="Pen Injector", dose="variable", visc="water", visc_val=1.8, cartridge="1.5 mL", strengths=["300 U/mL"], visc_ref="Sanofi label; basal insulin"),
-    "Lantus":    dict(molecule="Insulin glargine", device="Pen Injector", dose="variable", visc="water", visc_val=1.7, cartridge="3 mL", strengths=["100 U/mL"], visc_ref="Sanofi label; basal insulin"),
-    "Humira":    dict(molecule="Adalimumab", device="Auto-Injector", dose="fixed", visc="higher", visc_val=12.5, cartridge="1 mL PFS", strengths=["10 mg", "20 mg", "40 mg", "80 mg"], visc_ref="AbbVie label; high-viscosity mAb"),
-    "Enbrel":    dict(molecule="Etanercept", device="Auto-Injector", dose="fixed", visc="higher", visc_val=9.0, cartridge="1 mL PFS", strengths=["25 mg", "50 mg"], visc_ref="Amgen label; mAb"),
-    "Dupixent":  dict(molecule="Dupilumab", device="Auto-Injector", dose="fixed", visc="higher", visc_val=8.5, cartridge="3 mL PFS", strengths=["200 mg", "300 mg"], visc_ref="Regeneron label; mAb"),
+    "Ozempic":   dict(molecule="Semaglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.4, cartridge="3 mL", strengths=["0.25 mg", "0.5 mg", "1 mg", "2 mg"], visc_ref="DailyMed SmPC (NDC 0169-4181); aqueous GLP-1 solution",
+                 mech_drive=DRIVE_TORSION, mech_dose="variable", mech_label="FlexTouch dial pen — torsion-spring + lead-screw",
+                 ob_ref="FDA Orange Book device patents — FlexTouch platform (Novo Nordisk); exact patent nos. to confirm",
+                 ob_claims=["Torsion-spring energy store", "Lead-screw plunger advance", "Dial-set variable dose"]),
+    "Wegovy":    dict(molecule="Semaglutide", device="Auto-Injector", dose="fixed", visc="water", visc_val=1.6, cartridge="1 mL PFS", strengths=["0.25 mg", "0.5 mg", "1 mg", "1.7 mg", "2.4 mg"], visc_ref="FDA label 215256; single-dose AI",
+                 mech_drive=DRIVE_SPRING_ONE, mech_dose="fixed", mech_label="Single-dose spring pen",
+                 ob_ref="FDA Orange Book device patents — Wegovy single-dose pen (Novo Nordisk); exact patent nos. to confirm",
+                 ob_claims=["Pre-set fixed dose", "Spring-assisted single delivery"]),
+    "Trulicity": dict(molecule="Dulaglutide", device="Auto-Injector", dose="fixed", visc="higher", visc_val=6.2, cartridge="1 mL PFS", strengths=["0.75 mg", "1.5 mg", "3 mg", "4.5 mg"], visc_ref="Lilly label; mAb fusion, elevated viscosity",
+                 mech_drive=DRIVE_SPRING_AI, mech_dose="fixed", mech_label="Single-dose auto-injector (2-step, hidden needle)",
+                 ob_ref="FDA Orange Book device patents — Trulicity single-dose AI (Lilly); exact patent nos. to confirm",
+                 ob_claims=["Spring-driven auto-injection", "Automatic needle insertion + retraction", "Single fixed dose"]),
+    "Mounjaro":  dict(molecule="Tirzepatide", device="Auto-Injector", dose="fixed", visc="higher", visc_val=5.0, cartridge="1 mL PFS", strengths=["2.5 mg", "5 mg", "7.5 mg", "10 mg", "12.5 mg", "15 mg"], visc_ref="Lilly KwikPen literature",
+                 mech_drive=DRIVE_SPRING_AI, mech_dose="fixed", mech_label="Single-dose auto-injector",
+                 ob_ref="FDA Orange Book device patents — Mounjaro single-dose AI (Lilly); exact patent nos. to confirm",
+                 ob_claims=["Spring-driven auto-injection", "Push-on-skin activation", "Single fixed dose"]),
+    "Victoza":   dict(molecule="Liraglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.5, cartridge="3 mL", strengths=["0.6 mg", "1.2 mg", "1.8 mg"], visc_ref="EMA SmPC; multi-dose pen",
+                 mech_drive=DRIVE_TORSION, mech_dose="variable", mech_label="FlexTouch-type dial pen — torsion-spring",
+                 ob_ref="FDA Orange Book device patents — FlexTouch platform (Novo Nordisk); exact patent nos. to confirm",
+                 ob_claims=["Torsion-spring energy store", "Lead-screw plunger advance", "Dial-set variable dose"]),
+    "Saxenda":   dict(molecule="Liraglutide", device="Pen Injector", dose="variable", visc="water", visc_val=1.5, cartridge="3 mL", strengths=["0.6 mg", "1.2 mg", "1.8 mg", "2.4 mg", "3 mg"], visc_ref="EMA SmPC; weight-management pen",
+                 mech_drive=DRIVE_TORSION, mech_dose="variable", mech_label="FlexTouch dial pen — torsion-spring + lead-screw",
+                 ob_ref="FDA Orange Book device patents — FlexTouch platform (Novo Nordisk); exact patent nos. to confirm",
+                 ob_claims=["Torsion-spring energy store", "Lead-screw plunger advance", "Dial-set variable dose"]),
+    "Toujeo":    dict(molecule="Insulin glargine U300", device="Pen Injector", dose="variable", visc="water", visc_val=1.8, cartridge="1.5 mL", strengths=["300 U/mL"], visc_ref="Sanofi label; basal insulin",
+                 mech_drive=DRIVE_MANUAL, mech_dose="variable", mech_label="SoloStar-type dial pen — manual lead-screw",
+                 ob_ref="FDA Orange Book device patents — SoloStar platform (Sanofi); exact patent nos. to confirm",
+                 ob_claims=["Manual dial-set variable dose", "Lead-screw plunger advance", "Button-push delivery"]),
+    "Lantus":    dict(molecule="Insulin glargine", device="Pen Injector", dose="variable", visc="water", visc_val=1.7, cartridge="3 mL", strengths=["100 U/mL"], visc_ref="Sanofi label; basal insulin",
+                 mech_drive=DRIVE_MANUAL, mech_dose="variable", mech_label="SoloStar dial pen — manual lead-screw",
+                 ob_ref="FDA Orange Book device patents — SoloStar platform (Sanofi); exact patent nos. to confirm",
+                 ob_claims=["Manual dial-set variable dose", "Lead-screw plunger advance", "Button-push delivery"]),
+    "Humira":    dict(molecule="Adalimumab", device="Auto-Injector", dose="fixed", visc="higher", visc_val=12.5, cartridge="1 mL PFS", strengths=["10 mg", "20 mg", "40 mg", "80 mg"], visc_ref="AbbVie label; high-viscosity mAb",
+                 mech_drive=DRIVE_SPRING_AIHV, mech_dose="fixed", mech_label="High-viscosity mAb auto-injector",
+                 ob_ref="FDA Orange Book device patents — Humira pen/AI (AbbVie); exact patent nos. to confirm",
+                 ob_claims=["Spring-driven auto-injection", "High-force delivery for viscous mAb", "Single fixed dose"]),
+    "Enbrel":    dict(molecule="Etanercept", device="Auto-Injector", dose="fixed", visc="higher", visc_val=9.0, cartridge="1 mL PFS", strengths=["25 mg", "50 mg"], visc_ref="Amgen label; mAb",
+                 mech_drive=DRIVE_SPRING_AI, mech_dose="fixed", mech_label="mAb auto-injector (SureClick-type)",
+                 ob_ref="FDA Orange Book device patents — SureClick platform (Amgen); exact patent nos. to confirm",
+                 ob_claims=["Spring-driven auto-injection", "Automatic needle insertion", "Single fixed dose"]),
+    "Dupixent":  dict(molecule="Dupilumab", device="Auto-Injector", dose="fixed", visc="higher", visc_val=8.5, cartridge="3 mL PFS", strengths=["200 mg", "300 mg"], visc_ref="Regeneron label; mAb",
+                 mech_drive=DRIVE_SPRING_AI, mech_dose="fixed", mech_label="mAb auto-injector / pre-filled pen",
+                 ob_ref="FDA Orange Book device patents — Dupixent pen (Regeneron/Sanofi); exact patent nos. to confirm",
+                 ob_claims=["Spring-driven auto-injection", "Pre-filled single dose", "Automatic delivery"]),
 }
 
 CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"]
@@ -53,6 +129,72 @@ PLATFORM_SHEET = [
 def platforms_for_cartridge(cart: str):
     """Compatible platforms for a cartridge size, in presentation order (Option 1..n)."""
     return [p for p in PLATFORM_SHEET if cart in p["carts"]]
+
+
+# Partial-credit adjacency between drive families (symmetric); same drive = 1.0, absent pair = 0.0
+DRIVE_ADJACENCY = {
+    frozenset((DRIVE_SPRING_AI, DRIVE_SPRING_AIHV)): 0.6,
+    frozenset((DRIVE_SPRING_ONE, DRIVE_SPRING_AI)): 0.5,
+    frozenset((DRIVE_SPRING_ONE, DRIVE_TORSION)): 0.4,
+    frozenset((DRIVE_TORSION, DRIVE_MANUAL)): 0.2,
+    frozenset((DRIVE_SPRING_ONE, DRIVE_MANUAL)): 0.2,
+}
+
+W_ARCH, W_DRIVE, W_DOSE = 0.5, 0.3, 0.2
+BAND_CLOSE, BAND_SIMILAR = 0.80, 0.50
+
+
+def _drive_match(a: str, b: str) -> float:
+    if a and a == b:
+        return 1.0
+    return DRIVE_ADJACENCY.get(frozenset((a, b)), 0.0)
+
+
+def _dose_match(a: str, b: str) -> float:
+    if a == b:
+        return 1.0
+    if a == "na" or b == "na":
+        return 0.5
+    return 0.0
+
+
+def mechanism_similarity(rld: dict, p: dict):
+    """Return (score 0..1, band, rationale) comparing an RLD profile to a platform."""
+    sig = platform_signature(p)
+    arch = 1.0 if _norm_archetype(rld["device"]) == sig["archetype"] else 0.0
+    drv = _drive_match(rld.get("mech_drive", ""), sig["drive"])
+    dose = _dose_match(rld.get("mech_dose", ""), sig["dose"])
+    score = W_ARCH * arch + W_DRIVE * drv + W_DOSE * dose
+    band = "Close" if score >= BAND_CLOSE else "Similar" if score >= BAND_SIMILAR else "Divergent"
+    parts = [
+        "same archetype" if arch else "different archetype",
+        "same drive" if drv == 1.0 else "related drive" if drv > 0 else "unrelated drive",
+        "dose match" if dose == 1.0 else "dose n/a" if dose == 0.5 else "dose differs",
+    ]
+    return score, band, "; ".join(parts)
+
+
+def rank_platforms_for_sku(cart: str, rld: "dict | None"):
+    """Cartridge-compatible platforms ranked by mechanism closeness.
+
+    Hard filter: Close/Similar first (sorted by score). Fallback: Divergent
+    platforms appended (tagged fallback=True) so a 3-slot view can still fill
+    when fewer than 3 qualify. If rld has no curated profile, fall back to
+    cartridge-only order with band 'n/a'.
+    """
+    comp = platforms_for_cartridge(cart)
+    if not rld or not rld.get("mech_drive"):
+        return [{"platform": p, "score": None, "pct": None, "band": "n/a",
+                 "rationale": "no curated mechanism profile", "fallback": False}
+                for p in comp]
+    scored = []
+    for p in comp:
+        s, band, why = mechanism_similarity(rld, p)
+        scored.append({"platform": p, "score": s, "pct": round(s * 100), "band": band,
+                       "rationale": why, "fallback": band == "Divergent"})
+    qualifying = sorted((x for x in scored if x["band"] != "Divergent"), key=lambda x: -x["score"])
+    fallback = sorted((x for x in scored if x["band"] == "Divergent"), key=lambda x: -x["score"])
+    return qualifying + fallback
 
 
 # ---- Cost / timelines / services ----
