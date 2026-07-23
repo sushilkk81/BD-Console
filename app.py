@@ -167,7 +167,7 @@ def screen_gate():
             '<p style="color:#A9C3C1;margin-top:14px;max-width:40ch;">Engage Shaily early and move together — from first '
             'requirement to a costed, signable device proposal.</p></div>'
             '<div style="display:flex;gap:26px;margin-top:26px;font-family:IBM Plex Mono,monospace;">'
-            '<div><div style="font-size:24px;color:#fff">9</div><div style="font-size:10px;color:#7FA6A3">PLATFORM VARIANTS</div></div>'
+            '<div><div style="font-size:24px;color:#fff">9</div><div style="font-size:10px;color:#7FA6A3">PLATFORM FAMILIES</div></div>'
             '<div><div style="font-size:24px;color:#fff">&lt;3mo</div><div style="font-size:10px;color:#7FA6A3">FASTEST DV</div></div>'
             '<div><div style="font-size:24px;color:#fff">48h</div><div style="font-size:10px;color:#7FA6A3">COMPARATIVE PACK</div></div>'
             '</div></div>', unsafe_allow_html=True)
@@ -232,6 +232,7 @@ def _reset_for_rld():
     ss.differentiated = False
     ss.visc_val = None
     ss.visc_ref = ""
+    ss.chosen_option = 1
     ss._form_ver = ss.get("_form_ver", 0) + 1   # bump → keyed widgets re-initialise
 
 
@@ -373,8 +374,8 @@ def screen_options():
         st.warning("Complete the request form first."); return
     st.markdown('<div class="eyebrow">Step 02 · Platform options</div>', unsafe_allow_html=True)
     st.markdown("## Mapped Shaily platforms for your SKUs")
-    st.caption("Each SKU is matched to compatible Shaily platforms by cartridge size and device type. "
-               "Three option sets are proposed — pick the one to take forward.")
+    st.caption("Each SKU is matched to cartridge-compatible Shaily platforms and ranked by device-mechanism "
+               "closeness to the reference product. Three option sets are proposed — pick the one to take forward.")
 
     rld = _scoring_rld()
     if rld and rld.get("mech_label"):
