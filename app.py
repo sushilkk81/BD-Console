@@ -278,7 +278,13 @@ def screen_form():
         if ss.strengths:
             default_cart = ref["cartridge"] if ref else "3 mL"
             existing = {r["Strength"]: r for r in (ss.sku_rows or [])}
-            rows = [existing.get(s, dict(Strength=s, Cartridge=default_cart, **{"Fill (mL)": 1.5})) for s in ss.strengths]
+            rows = []
+            for s in ss.strengths:
+                if s in existing:
+                    rows.append(existing[s])
+                else:
+                    cart, fill, _ = D.presentation_for(ss.brand, s, default_cart)
+                    rows.append(dict(Strength=s, Cartridge=cart, **{"Fill (mL)": fill}))
             df = pd.DataFrame(rows)
             edited = st.data_editor(
                 df, use_container_width=True, hide_index=True, num_rows="fixed",
@@ -288,6 +294,9 @@ def screen_form():
                     "Fill (mL)": st.column_config.NumberColumn(min_value=0.0, step=0.1, format="%.2f mL"),
                 }, key="sku_editor")
             ss.sku_rows = edited.to_dict("records")
+            _, _, pref = D.presentation_for(ss.brand, ss.strengths[0], default_cart)
+            if pref:
+                st.caption(f"📄 Presentation source: {pref}")
         else:
             st.info("Select at least one strength above to configure cartridge & fill per SKU.")
 

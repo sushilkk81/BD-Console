@@ -103,6 +103,49 @@ REFERENCE_PRODUCTS = {
 
 CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"]
 
+# ---- Per-SKU presentation (cartridge × fill in mL), curated from FDA/EMA labels ----
+# Each brand maps strength → (cartridge, fill_mL); "_ref" is the label citation.
+PRESENTATIONS = {
+    "Ozempic": {"_ref": "Ozempic FDA label 209637 / DailyMed — 2 mg/1.5 mL, 4 mg/3 mL, 8 mg/3 mL pens",
+                "0.25 mg": ("1.5 mL", 1.5), "0.5 mg": ("1.5 mL", 1.5),
+                "1 mg": ("3 mL", 3.0), "2 mg": ("3 mL", 3.0)},
+    "Wegovy": {"_ref": "Wegovy PI (Novo Nordisk) — single-dose pens 0.5 mL (≤1 mg), 0.75 mL (1.7/2.4 mg)",
+               "0.25 mg": ("1 mL PFS", 0.5), "0.5 mg": ("1 mL PFS", 0.5), "1 mg": ("1 mL PFS", 0.5),
+               "1.7 mg": ("1 mL PFS", 0.75), "2.4 mg": ("1 mL PFS", 0.75)},
+    "Trulicity": {"_ref": "Trulicity FDA label 125469 — single-dose pen 0.5 mL, all doses",
+                  "0.75 mg": ("1 mL PFS", 0.5), "1.5 mg": ("1 mL PFS", 0.5),
+                  "3 mg": ("1 mL PFS", 0.5), "4.5 mg": ("1 mL PFS", 0.5)},
+    "Mounjaro": {"_ref": "Mounjaro DailyMed — single-dose pen 0.5 mL, all doses",
+                 "2.5 mg": ("1 mL PFS", 0.5), "5 mg": ("1 mL PFS", 0.5), "7.5 mg": ("1 mL PFS", 0.5),
+                 "10 mg": ("1 mL PFS", 0.5), "12.5 mg": ("1 mL PFS", 0.5), "15 mg": ("1 mL PFS", 0.5)},
+    "Victoza": {"_ref": "Victoza DailyMed — 18 mg/3 mL multi-dose pen",
+                "0.6 mg": ("3 mL", 3.0), "1.2 mg": ("3 mL", 3.0), "1.8 mg": ("3 mL", 3.0)},
+    "Saxenda": {"_ref": "Saxenda EMA SmPC — 18 mg/3 mL multi-dose pen",
+                "0.6 mg": ("3 mL", 3.0), "1.2 mg": ("3 mL", 3.0), "1.8 mg": ("3 mL", 3.0),
+                "2.4 mg": ("3 mL", 3.0), "3 mg": ("3 mL", 3.0)},
+    "Toujeo": {"_ref": "Toujeo DailyMed — SoloStar 1.5 mL (450 U), U-300",
+               "300 U/mL": ("1.5 mL", 1.5)},
+    "Lantus": {"_ref": "Lantus DailyMed — SoloStar 3 mL (300 U), U-100",
+               "100 U/mL": ("3 mL", 3.0)},
+    "Humira": {"_ref": "Humira IFU/label — citrate-free 40 mg/0.4 mL, 80 mg/0.8 mL, 20 mg/0.2 mL, 10 mg/0.1 mL",
+               "10 mg": ("1 mL PFS", 0.1), "20 mg": ("1 mL PFS", 0.2),
+               "40 mg": ("1 mL PFS", 0.4), "80 mg": ("1 mL PFS", 0.8)},
+    "Enbrel": {"_ref": "Enbrel FDA label 103795 — SureClick 50 mg/1.0 mL, 25 mg/0.5 mL",
+               "25 mg": ("1 mL PFS", 0.5), "50 mg": ("1 mL PFS", 1.0)},
+    "Dupixent": {"_ref": "Dupixent DailyMed — pre-filled pen 200 mg/1.14 mL, 300 mg/2 mL",
+                 "200 mg": ("3 mL PFS", 1.14), "300 mg": ("3 mL PFS", 2.0)},
+}
+
+
+def presentation_for(brand: str, strength: str, default_cart: str = "3 mL"):
+    """Return (cartridge, fill_mL, citation) for an RLD SKU from curated label data.
+
+    Falls back to (default_cart, 1.5, "") for unknown brand/strength.
+    """
+    p = PRESENTATIONS.get(brand, {})
+    cart, fill = p.get(strength, (default_cart, 1.5))
+    return cart, fill, p.get("_ref", "")
+
 # ---- Shaily platform sheet (authoritative) ----
 # cls: Pen Injector | Autoinjector | On-Body ; carts: compatible cartridge sizes
 PLATFORM_SHEET = [

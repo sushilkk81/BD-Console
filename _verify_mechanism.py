@@ -76,3 +76,28 @@ r4 = D.rank_platforms_for_sku("3 mL", None)
 assert r4 and all(x["band"] == "n/a" and x["pct"] is None for x in r4)
 
 print("task3 ranking: OK")
+
+# --- Task 4: per-SKU presentation (cartridge x fill) from labels ---
+assert D.presentation_for("Ozempic", "0.25 mg")[:2] == ("1.5 mL", 1.5)
+assert D.presentation_for("Ozempic", "0.5 mg")[:2] == ("1.5 mL", 1.5)
+assert D.presentation_for("Ozempic", "1 mg")[:2] == ("3 mL", 3.0)      # the reported bug
+assert D.presentation_for("Ozempic", "2 mg")[:2] == ("3 mL", 3.0)      # the reported bug
+assert D.presentation_for("Wegovy", "1 mg")[1] == 0.5
+assert D.presentation_for("Wegovy", "2.4 mg")[1] == 0.75
+assert D.presentation_for("Humira", "40 mg")[1] == 0.4                  # citrate-free
+assert D.presentation_for("Humira", "80 mg")[1] == 0.8
+assert D.presentation_for("Enbrel", "25 mg")[1] == 0.5
+assert D.presentation_for("Dupixent", "300 mg")[1] == 2.0
+# unknown → safe fallback
+assert D.presentation_for("Nonesuch", "9 mg")[:2] == ("3 mL", 1.5)
+
+# every RLD strength has a curated presentation with a valid cartridge + citation
+for brand, r in D.REFERENCE_PRODUCTS.items():
+    p = D.PRESENTATIONS.get(brand, {})
+    assert p.get("_ref"), brand
+    for s in r["strengths"]:
+        assert s in p, (brand, s)
+        cart, fill = p[s]
+        assert cart in D.CART_SIZES and fill > 0, (brand, s, cart, fill)
+
+print("task4 presentations: OK")
