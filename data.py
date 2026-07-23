@@ -160,6 +160,7 @@ _WEGOVY_EU = dict(
     device="Pen Injector", mech_drive=DRIVE_TORSION, mech_dose="variable",
     mech_label="Wegovy FlexTouch multi-dose pen — torsion-spring",
     ob_ref="EMA/FDA device patents — FlexTouch platform (Novo Nordisk); exact patent nos. to confirm",
+    ob_claims=["Torsion-spring energy store", "Lead-screw plunger advance", "Dial-set dose", "Multi-dose reusable pen"],
     presentations={s: ("1.5 mL", 1.5) for s in ["0.25 mg", "0.5 mg", "1 mg", "1.7 mg", "2.4 mg"]},
     pres_ref="EMA Wegovy SmPC — FlexTouch multi-dose pen, 1.5 mL (all strengths)",
     note="Multi-dose FlexTouch pen (1.5 mL) — differs from US single-dose")
@@ -167,6 +168,7 @@ _MOUNJARO_MD = dict(
     device="Pen Injector", mech_drive=DRIVE_MANUAL, mech_dose="fixed",
     mech_label="Mounjaro KwikPen — multi-dose (4 × 0.6 mL)",
     ob_ref="EMA device patents — KwikPen platform (Lilly); exact patent nos. to confirm",
+    ob_claims=["Manual dial/push delivery", "Fixed 0.6 mL dose", "Multi-dose (4 doses/pen)"],
     presentations={s: ("3 mL", 2.4) for s in ["2.5 mg", "5 mg", "7.5 mg", "10 mg", "12.5 mg", "15 mg"]},
     pres_ref="EMA Mounjaro SmPC — KwikPen 2.4 mL (4 × 0.6 mL)",
     note="KwikPen multi-dose (4 doses/pen) — differs from US single-dose")
