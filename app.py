@@ -1,4 +1,5 @@
 """Shaily DDCP Partnership Console — Streamlit build.  Run: streamlit run app.py"""
+# Requires data.py mechanism engine (rank_platforms_for_sku, mech_* profiles) — keep in sync.
 from __future__ import annotations
 import base64
 import datetime as _dt
