@@ -140,3 +140,23 @@ us_rank = D.rank_platforms_for_sku("1 mL PFS", D.variants_for("Wegovy", "US"))
 assert us_rank[0]["platform"]["cls"] == "Autoinjector", us_rank[0]["platform"]["variant"]
 
 print("task5 market variants: OK")
+
+# --- Task 6: viscosity-aware soft filter ---
+neo3 = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Neo (3 mL)")
+safelan = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Safe LAN")
+toby = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Toby")
+assert D.platform_max_visc(neo3) == 8.0
+assert D.platform_max_visc(safelan) == 50.0
+assert D.platform_max_visc(toby) == 15.0
+
+# High-viscosity product on 3 mL pens → pens flagged visc_limited and penalised (0.80 → 0.40)
+hv = {"device": "Pen Injector", "mech_drive": D.DRIVE_TORSION, "mech_dose": "variable", "visc_val": 30}
+hv_rank = {x["platform"]["variant"]: x for x in D.rank_platforms_for_sku("3 mL", hv)}
+assert hv_rank["Neo (3 mL)"]["visc_limited"] is True, hv_rank["Neo (3 mL)"]
+assert hv_rank["Neo (3 mL)"]["pct"] <= 40
+
+# Low-viscosity product (Ozempic 1.4 cP) → no penalty, unchanged from task3
+lv_rank = {x["platform"]["variant"]: x for x in D.rank_platforms_for_sku("3 mL", D.REFERENCE_PRODUCTS["Ozempic"])}
+assert lv_rank["Neo (3 mL)"]["visc_limited"] is False and lv_rank["Neo (3 mL)"]["pct"] == 80
+
+print("task6 viscosity: OK")
