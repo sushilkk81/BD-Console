@@ -101,3 +101,42 @@ for brand, r in D.REFERENCE_PRODUCTS.items():
         assert cart in D.CART_SIZES and fill > 0, (brand, s, cart, fill)
 
 print("task4 presentations: OK")
+
+# --- Task 5: market-aware variants (US / EU / Canada) ---
+assert D.MARKETS == ["US", "EU", "Canada"], D.MARKETS
+
+# Wegovy: US single-dose AI vs EU/Canada FlexTouch torsion pen
+wus = D.variants_for("Wegovy", "US")
+assert wus["device"] == "Auto-Injector" and wus["mech_drive"] == D.DRIVE_SPRING_ONE
+assert wus["market_note"] == ""
+for mkt in ("EU", "Canada"):
+    w = D.variants_for("Wegovy", mkt)
+    assert w["device"] == "Pen Injector" and w["mech_drive"] == D.DRIVE_TORSION, (mkt, w["mech_drive"])
+    assert w["market_note"]
+
+# Mounjaro: US single-dose AI vs EU/Canada KwikPen manual pen
+mus = D.variants_for("Mounjaro", "US")
+assert mus["device"] == "Auto-Injector" and mus["mech_drive"] == D.DRIVE_SPRING_AI
+for mkt in ("EU", "Canada"):
+    m = D.variants_for("Mounjaro", mkt)
+    assert m["device"] == "Pen Injector" and m["mech_drive"] == D.DRIVE_MANUAL and m["mech_dose"] == "fixed"
+
+# Non-divergent product identical across markets
+assert D.variants_for("Ozempic", "EU")["device"] == D.variants_for("Ozempic", "US")["device"]
+assert D.variants_for("Ozempic", "Canada")["market_note"] == ""
+
+# Market-aware presentations
+assert D.presentation_for("Wegovy", "0.25 mg", "US")[:2] == ("1 mL PFS", 0.5)
+assert D.presentation_for("Wegovy", "0.25 mg", "EU")[:2] == ("1.5 mL", 1.5)
+assert D.presentation_for("Wegovy", "2.4 mg", "Canada")[:2] == ("1.5 mL", 1.5)
+assert D.presentation_for("Mounjaro", "5 mg", "US")[:2] == ("1 mL PFS", 0.5)
+assert D.presentation_for("Mounjaro", "5 mg", "EU")[:2] == ("3 mL", 2.4)
+
+# Market flips the mechanism mapping: EU Wegovy (torsion pen, 1.5 mL) → Neo torsion is Close & top
+eu_rank = D.rank_platforms_for_sku("1.5 mL", D.variants_for("Wegovy", "EU"))
+assert eu_rank[0]["platform"]["variant"] == "Neo (1.5 mL)" and eu_rank[0]["band"] == "Close", eu_rank[0]
+# US Wegovy (single-dose AI, 1 mL PFS) maps to auto-injectors instead
+us_rank = D.rank_platforms_for_sku("1 mL PFS", D.variants_for("Wegovy", "US"))
+assert us_rank[0]["platform"]["cls"] == "Autoinjector", us_rank[0]["platform"]["variant"]
+
+print("task5 market variants: OK")
