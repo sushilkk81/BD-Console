@@ -353,7 +353,11 @@ def _option_tables():
             item = ranked[opt] if opt < len(ranked) else None
             p = item["platform"] if item else None
             if item and item["band"] != "n/a":
-                match = f'{item["band"]} · {item["pct"]}%' + (" ⚠ fallback" if item["fallback"] else "")
+                match = f'{item["band"]} · {item["pct"]}%'
+                if item["fallback"]:
+                    match += " ⚠ fallback"
+                if item.get("visc_limited"):
+                    match += " · visc-limited"
             else:
                 match = "—"
             rows.append({
@@ -421,9 +425,10 @@ def screen_cost():
         st.warning("Complete the request form first."); return
     tables = _option_tables()
     chosen = tables[ss.chosen_option]
-    # severity: moderate if any chosen platform is a "moderate change" variant, else minor
-    moderate = any(v.get("moderate") for v in D.PLATFORM_SHEET
-                   if v["variant"] in set(chosen["Platform"]))
+    # severity: escalate to moderate for a "moderate change" platform OR a divergent (fallback) pick
+    has_fallback = any("fallback" in str(m) for m in chosen["Mechanism match"])
+    moderate = has_fallback or any(v.get("moderate") for v in D.PLATFORM_SHEET
+                                   if v["variant"] in set(chosen["Platform"]))
     sev = "moderate" if moderate else "minor"
 
     st.markdown('<div class="eyebrow">Step 03 · Tentative cost & deal</div>', unsafe_allow_html=True)
@@ -466,6 +471,9 @@ def screen_cost():
             st.markdown(f'<div class="{"hl" if sev=="moderate" else "card"}">Governing change: '
                         f'<b>{D.SEV_LABEL[sev]}</b> — {D.SEV_LOGIC[sev]}. Standard timeline '
                         f'<b>{D.TIMELINE[sev]} months</b>.</div>', unsafe_allow_html=True)
+            if has_fallback:
+                st.caption("⚠ Severity raised to moderate: this option includes a mechanistically divergent "
+                           "(fallback) platform — added device design verification / human-factors expected.")
     with c2:
         with st.container(border=True):
             section("Total package")

@@ -269,24 +269,43 @@ def mechanism_similarity(rld: dict, p: dict):
     return score, band, "; ".join(parts)
 
 
+# Approx. max solution viscosity each platform class can deliver (cP), for soft-filtering.
+def platform_max_visc(p: dict) -> float:
+    if "high visc" in p["mech"].lower():
+        return 50.0                    # Safe-LAN — high-force AI for viscous mAbs
+    if p["cls"] == "On-Body":
+        return 50.0                    # Mira — on-body, high viscosity / large volume
+    if p["cls"] == "Pen Injector":
+        return 8.0                     # spring/manual pens — aqueous low-viscosity
+    return 15.0                        # standard auto-injectors
+
+
 def rank_platforms_for_sku(cart: str, rld: "dict | None"):
-    """Cartridge-compatible platforms ranked by mechanism closeness.
+    """Cartridge-compatible platforms ranked by mechanism closeness, viscosity-aware.
 
     Hard filter: Close/Similar first (sorted by score). Fallback: Divergent
     platforms appended (tagged fallback=True) so a 3-slot view can still fill
-    when fewer than 3 qualify. If rld has no curated profile, fall back to
-    cartridge-only order with band 'n/a'.
+    when fewer than 3 qualify. Platforms whose viscosity capability is below the
+    RLD's viscosity get a soft score penalty (not hidden) and a visc_limited flag.
+    If rld has no curated profile, fall back to cartridge-only order with band 'n/a'.
     """
     comp = platforms_for_cartridge(cart)
     if not rld or not rld.get("mech_drive"):
         return [{"platform": p, "score": None, "pct": None, "band": "n/a",
-                 "rationale": "no curated mechanism profile", "fallback": False}
+                 "rationale": "no curated mechanism profile", "fallback": False, "visc_limited": False}
                 for p in comp]
+    visc = rld.get("visc_val")
     scored = []
     for p in comp:
-        s, band, why = mechanism_similarity(rld, p)
+        s, _band, why = mechanism_similarity(rld, p)
+        cap = platform_max_visc(p)
+        visc_limited = bool(visc and visc > cap)
+        if visc_limited:
+            s *= 0.5                    # soft penalty — deprioritise, don't hide
+            why += f"; viscosity {visc} cP exceeds platform capability (~{cap:.0f} cP)"
+        band = "Close" if s >= BAND_CLOSE else "Similar" if s >= BAND_SIMILAR else "Divergent"
         scored.append({"platform": p, "score": s, "pct": round(s * 100), "band": band,
-                       "rationale": why, "fallback": band == "Divergent"})
+                       "rationale": why, "fallback": band == "Divergent", "visc_limited": visc_limited})
     qualifying = sorted((x for x in scored if x["band"] != "Divergent"), key=lambda x: -x["score"])
     fallback = sorted((x for x in scored if x["band"] == "Divergent"), key=lambda x: -x["score"])
     return qualifying + fallback
