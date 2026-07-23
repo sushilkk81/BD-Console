@@ -223,18 +223,35 @@ def nav():
 # ────────────────────────────────────────────────────────────────────────────
 # Request form
 # ────────────────────────────────────────────────────────────────────────────
+def _reset_for_rld():
+    """Cascade fresh defaults for every RLD-dependent field when the reference product changes."""
+    ref = D.REFERENCE_PRODUCTS.get(ss.brand)
+    ss.strengths = list(ref["strengths"]) if ref else []
+    ss.sku_rows = None
+    ss.device = ref["device"] if ref else None
+    ss.differentiated = False
+    ss.visc_val = None
+    ss.visc_ref = ""
+    ss._form_ver = ss.get("_form_ver", 0) + 1   # bump → keyed widgets re-initialise
+
+
 def screen_form():
     st.markdown('<div class="eyebrow">Step 01 · Customer request form</div>', unsafe_allow_html=True)
     st.markdown("## Tell us about the product")
-    ref = D.REFERENCE_PRODUCTS.get(ss.brand)
+    keys = list(D.REFERENCE_PRODUCTS.keys())
+    ver = ss.get("_form_ver", 0)
 
     with st.container(border=True):
         section("Reference product")
         c1, c2 = st.columns(2)
-        ss.brand = c1.selectbox("Reference product brand name", list(D.REFERENCE_PRODUCTS.keys()),
-                                index=list(D.REFERENCE_PRODUCTS.keys()).index(ss.brand))
+        new_brand = c1.selectbox("Reference product brand name", keys, index=keys.index(ss.brand))
+        new_market = c2.selectbox("Target market", D.MARKETS, index=D.MARKETS.index(ss.market))
+        if new_brand != ss.brand:                    # RLD changed → cascade fresh defaults, then redraw
+            ss.brand, ss.market = new_brand, new_market
+            _reset_for_rld()
+            st.rerun()
+        ss.brand, ss.market = new_brand, new_market
         ref = D.REFERENCE_PRODUCTS.get(ss.brand)
-        ss.market = c2.selectbox("Target market", D.MARKETS, index=D.MARKETS.index(ss.market))
         if ref:
             st.caption(f"✓ Recognised — **{ref['molecule']}** · device auto-set to **{ref['device']}**.")
         opts = ref["strengths"] if ref else []
@@ -292,7 +309,7 @@ def screen_form():
                     "Strength": st.column_config.TextColumn(disabled=True),
                     "Cartridge": st.column_config.SelectboxColumn(options=D.CART_SIZES, required=True),
                     "Fill (mL)": st.column_config.NumberColumn(min_value=0.0, step=0.1, format="%.2f mL"),
-                }, key="sku_editor")
+                }, key=f"sku_{ver}")
             ss.sku_rows = edited.to_dict("records")
             _, _, pref = D.presentation_for(ss.brand, ss.strengths[0], default_cart)
             if pref:

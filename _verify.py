@@ -57,4 +57,20 @@ mk = " ".join(m.value for m in at.markdown)
 if "Reference device mechanism" not in mk:
     problems.append(("options-banner", "no mechanism banner"))
 
+# Form seeds per-RLD presentation for a non-Ozempic brand (proves cross-brand seeding)
+at = AppTest.from_file("app.py", default_timeout=90)
+base(at, role="Pharma — R&D / Formulation")
+at.session_state["brand"] = "Humira"
+at.session_state["strengths"] = D.REFERENCE_PRODUCTS["Humira"]["strengths"]
+at.session_state["sku_rows"] = None
+at.session_state["screen"] = "form"
+at.run()
+seeded = {(r["Strength"], r["Cartridge"], r["Fill (mL)"]) for r in (at.session_state["sku_rows"] or [])}
+print("Humira seeded rows:", sorted(seeded))
+carts = {c for _, c, _ in seeded}
+if carts != {"1 mL PFS"}:
+    problems.append(("humira-cartridge-seed", carts))
+if ("40 mg", "1 mL PFS", 0.4) not in seeded:
+    problems.append(("humira-fill-seed", "40 mg != 0.4 mL"))
+
 print("\nRESULT:", "ALL OK ✅" if not problems else f"{len(problems)} PROBLEM(S) ❌ {problems}")
