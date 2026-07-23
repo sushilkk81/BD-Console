@@ -224,8 +224,8 @@ def nav():
 # Request form
 # ────────────────────────────────────────────────────────────────────────────
 def _reset_for_rld():
-    """Cascade fresh defaults for every RLD-dependent field when the reference product changes."""
-    ref = D.REFERENCE_PRODUCTS.get(ss.brand)
+    """Cascade fresh defaults for every RLD-dependent field when brand or market changes."""
+    ref = D.variants_for(ss.brand, ss.market)
     ss.strengths = list(ref["strengths"]) if ref else []
     ss.sku_rows = None
     ss.device = ref["device"] if ref else None
@@ -245,15 +245,18 @@ def screen_form():
         section("Reference product")
         c1, c2 = st.columns(2)
         new_brand = c1.selectbox("Reference product brand name", keys, index=keys.index(ss.brand))
-        new_market = c2.selectbox("Target market", D.MARKETS, index=D.MARKETS.index(ss.market))
-        if new_brand != ss.brand:                    # RLD changed → cascade fresh defaults, then redraw
+        mkt_idx = D.MARKETS.index(ss.market) if ss.market in D.MARKETS else 0
+        new_market = c2.selectbox("Target market", D.MARKETS, index=mkt_idx)
+        if new_brand != ss.brand or new_market != ss.market:   # brand/market changed → cascade fresh defaults
             ss.brand, ss.market = new_brand, new_market
             _reset_for_rld()
             st.rerun()
         ss.brand, ss.market = new_brand, new_market
-        ref = D.REFERENCE_PRODUCTS.get(ss.brand)
+        ref = D.variants_for(ss.brand, ss.market)
         if ref:
-            st.caption(f"✓ Recognised — **{ref['molecule']}** · device auto-set to **{ref['device']}**.")
+            st.caption(f"✓ Recognised — **{ref['molecule']}** · device auto-set to **{ref['device']}** for {ss.market}.")
+            if ref.get("market_note"):
+                st.caption(f"🌍 {ss.market}: {ref['market_note']}")
         opts = ref["strengths"] if ref else []
         chosen = st.multiselect("Strength(s) / SKUs — dose strength as published", options=opts,
                                 default=[s for s in (ss.strengths or opts) if s in opts]) if opts else \
@@ -300,7 +303,7 @@ def screen_form():
                 if s in existing:
                     rows.append(existing[s])
                 else:
-                    cart, fill, _ = D.presentation_for(ss.brand, s, default_cart)
+                    cart, fill, _ = D.presentation_for(ss.brand, s, ss.market, default_cart)
                     rows.append(dict(Strength=s, Cartridge=cart, **{"Fill (mL)": fill}))
             df = pd.DataFrame(rows)
             edited = st.data_editor(
@@ -311,9 +314,9 @@ def screen_form():
                     "Fill (mL)": st.column_config.NumberColumn(min_value=0.0, step=0.1, format="%.2f mL"),
                 }, key=f"sku_{ver}")
             ss.sku_rows = edited.to_dict("records")
-            _, _, pref = D.presentation_for(ss.brand, ss.strengths[0], default_cart)
+            _, _, pref = D.presentation_for(ss.brand, ss.strengths[0], ss.market, default_cart)
             if pref:
-                st.caption(f"📄 Presentation source: {pref}")
+                st.caption(f"📄 Presentation source: {pref} · label data verified as of {D.DATA_AS_OF}")
         else:
             st.info("Select at least one strength above to configure cartridge & fill per SKU.")
 
@@ -326,12 +329,12 @@ def screen_form():
 # Platform options — SKU → Option 1 / 2 / 3 tables (no rank order)
 # ────────────────────────────────────────────────────────────────────────────
 def _scoring_rld():
-    """RLD profile used for mechanism scoring, honouring a differentiated-device override."""
-    rld = D.REFERENCE_PRODUCTS.get(ss.brand)
+    """Market-effective RLD profile for mechanism scoring, honouring a differentiated-device override."""
+    rld = D.variants_for(ss.brand, ss.market)
     if rld is None:
         return None
-    rld = dict(rld)
     if ss.differentiated and ss.device:
+        rld = dict(rld)
         rld["device"] = ss.device
     return rld
 

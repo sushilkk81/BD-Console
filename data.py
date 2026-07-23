@@ -137,14 +137,64 @@ PRESENTATIONS = {
 }
 
 
-def presentation_for(brand: str, strength: str, default_cart: str = "3 mL"):
-    """Return (cartridge, fill_mL, citation) for an RLD SKU from curated label data.
+def presentation_for(brand: str, strength: str, market: str = None, default_cart: str = "3 mL"):
+    """Return (cartridge, fill_mL, citation) for an RLD SKU, market-aware.
 
-    Falls back to (default_cart, 1.5, "") for unknown brand/strength.
+    A (brand, market) override in MARKET_VARIANTS wins; else the base PRESENTATIONS
+    apply; else (default_cart, 1.5, "") for an unknown brand/strength.
     """
+    ov = MARKET_VARIANTS.get((brand, market)) if market else None
+    if ov and ov.get("presentations", {}).get(strength):
+        cart, fill = ov["presentations"][strength]
+        return cart, fill, ov.get("pres_ref", "")
     p = PRESENTATIONS.get(brand, {})
     cart, fill = p.get(strength, (default_cart, 1.5))
     return cart, fill, p.get("_ref", "")
+
+
+# ---- Market-specific RLD overrides (US / EU / Canada) ------------------------
+# Keyed by (brand, market); merged over the base REFERENCE_PRODUCTS entry. Only the
+# products whose DEVICE/mechanism/presentation genuinely differ by market appear here.
+# Rule: verify every variant against the latest innovator PIL; keep DATA_AS_OF current.
+_WEGOVY_EU = dict(
+    device="Pen Injector", mech_drive=DRIVE_TORSION, mech_dose="variable",
+    mech_label="Wegovy FlexTouch multi-dose pen — torsion-spring",
+    ob_ref="EMA/FDA device patents — FlexTouch platform (Novo Nordisk); exact patent nos. to confirm",
+    presentations={s: ("1.5 mL", 1.5) for s in ["0.25 mg", "0.5 mg", "1 mg", "1.7 mg", "2.4 mg"]},
+    pres_ref="EMA Wegovy SmPC — FlexTouch multi-dose pen, 1.5 mL (all strengths)",
+    note="Multi-dose FlexTouch pen (1.5 mL) — differs from US single-dose")
+_MOUNJARO_MD = dict(
+    device="Pen Injector", mech_drive=DRIVE_MANUAL, mech_dose="fixed",
+    mech_label="Mounjaro KwikPen — multi-dose (4 × 0.6 mL)",
+    ob_ref="EMA device patents — KwikPen platform (Lilly); exact patent nos. to confirm",
+    presentations={s: ("3 mL", 2.4) for s in ["2.5 mg", "5 mg", "7.5 mg", "10 mg", "12.5 mg", "15 mg"]},
+    pres_ref="EMA Mounjaro SmPC — KwikPen 2.4 mL (4 × 0.6 mL)",
+    note="KwikPen multi-dose (4 doses/pen) — differs from US single-dose")
+
+MARKET_VARIANTS = {
+    ("Wegovy", "EU"): dict(_WEGOVY_EU),
+    ("Wegovy", "Canada"): dict(_WEGOVY_EU, pres_ref="Health Canada Wegovy Product Monograph — FlexTouch multi-dose pen"),
+    ("Mounjaro", "EU"): dict(_MOUNJARO_MD),
+    ("Mounjaro", "Canada"): dict(_MOUNJARO_MD, pres_ref="Health Canada Mounjaro KwikPen IFU — 2.4 mL (4 × 0.6 mL)"),
+}
+
+
+def variants_for(brand: str, market: str):
+    """Effective RLD profile for a (brand, market): base merged with any market override.
+
+    Adds 'market_note' (str, empty if none). Returns None for an unknown brand.
+    """
+    base = REFERENCE_PRODUCTS.get(brand)
+    if base is None:
+        return None
+    eff = dict(base)
+    ov = MARKET_VARIANTS.get((brand, market))
+    if ov:
+        for k, v in ov.items():
+            if k not in ("note", "pres_ref", "presentations"):
+                eff[k] = v
+    eff["market_note"] = ov.get("note", "") if ov else ""
+    return eff
 
 # ---- Shaily platform sheet (authoritative) ----
 # cls: Pen Injector | Autoinjector | On-Body ; carts: compatible cartridge sizes
@@ -264,7 +314,8 @@ def commercial_fy(sub_fy: str, sub_q: str) -> str:
     return f"FY{total // 4} Q{(total % 4) + 1}"
 
 
-MARKETS = ["US", "EU", "India", "Asia", "LATAM"]
+MARKETS = ["US", "EU", "Canada"]
+DATA_AS_OF = "2026-07-23"   # RLD label/PIL verification date (refresh when variants change)
 FY_OPTIONS = [f"FY{y}" for y in range(26, 32)]
 QUARTERS = ["Q1", "Q2", "Q3", "Q4"]
 
