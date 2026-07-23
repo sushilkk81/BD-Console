@@ -298,22 +298,33 @@ def screen_form():
 # ────────────────────────────────────────────────────────────────────────────
 # Platform options — SKU → Option 1 / 2 / 3 tables (no rank order)
 # ────────────────────────────────────────────────────────────────────────────
+def _scoring_rld():
+    """RLD profile used for mechanism scoring, honouring a differentiated-device override."""
+    rld = D.REFERENCE_PRODUCTS.get(ss.brand)
+    if rld is None:
+        return None
+    rld = dict(rld)
+    if ss.differentiated and ss.device:
+        rld["device"] = ss.device
+    return rld
+
+
 def _option_tables():
-    """Return {option_index: DataFrame} mapping each SKU to its k-th compatible platform."""
+    """Return {option_index: DataFrame} mapping each SKU to its k-th mechanism-ranked platform."""
     skus = active_skus()
-    per_sku = {}
-    for r in skus:
-        comp = D.platforms_for_cartridge(r["Cartridge"])
-        if ss.device and ss.device != "On-Body":
-            want = "Autoinjector" if ss.device == "Auto-Injector" else ss.device
-            comp = sorted(comp, key=lambda p: 0 if p["cls"] == want else 1)
-        per_sku[r["Strength"]] = comp
+    rld = _scoring_rld()
+    per_sku = {r["Strength"]: D.rank_platforms_for_sku(r["Cartridge"], rld) for r in skus}
     tables = {}
     for opt in range(3):
         rows = []
         for r in skus:
-            comp = per_sku[r["Strength"]]
-            p = comp[opt] if opt < len(comp) else None
+            ranked = per_sku[r["Strength"]]
+            item = ranked[opt] if opt < len(ranked) else None
+            p = item["platform"] if item else None
+            if item and item["band"] != "n/a":
+                match = f'{item["band"]} · {item["pct"]}%' + (" ⚠ fallback" if item["fallback"] else "")
+            else:
+                match = "—"
             rows.append({
                 "SKU": r["Strength"], "Cartridge": r["Cartridge"],
                 "Platform": p["variant"] if p else "—",
@@ -321,6 +332,7 @@ def _option_tables():
                 "Resolution": p["resolution"] if p else "—",
                 "Last-dose lockout": p["lockout"] if p else "—",
                 "Mechanism": p["mech"] if p else "—",
+                "Mechanism match": match,
             })
         tables[opt + 1] = pd.DataFrame(rows)
     return tables
@@ -333,6 +345,25 @@ def screen_options():
     st.markdown("## Mapped Shaily platforms for your SKUs")
     st.caption("Each SKU is matched to compatible Shaily platforms by cartridge size and device type. "
                "Three option sets are proposed — pick the one to take forward.")
+
+    rld = _scoring_rld()
+    if rld and rld.get("mech_label"):
+        st.markdown(
+            f'<div class="pill">Reference device mechanism: '
+            f'<b>{rld["mech_label"]}</b> · {rld.get("mech_dose", "")} dose</div>',
+            unsafe_allow_html=True)
+        st.caption(f'Basis: {rld.get("ob_ref", "—")}')
+        with st.expander("Orange Book device patents — mechanism basis"):
+            st.write(f'**Reference:** {rld.get("ob_ref", "—")}')
+            st.write("**Mechanism claims used to classify drive:**")
+            for c in rld.get("ob_claims", []):
+                st.write(f"- {c}")
+        st.caption("Options are ranked by mechanism closeness to the reference device. "
+                   "Rows flagged ⚠ fallback are cartridge-compatible but mechanistically divergent — "
+                   "expect added device DV / human-factors burden.")
+    else:
+        st.info("No curated mechanism profile for this product — mapping falls back to cartridge-only ranking.")
+
     tables = _option_tables()
     for opt, cls in [(1, "o1"), (2, "o2"), (3, "o3")]:
         selected = ss.chosen_option == opt

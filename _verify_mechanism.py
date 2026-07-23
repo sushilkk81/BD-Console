@@ -1,0 +1,78 @@
+"""Standalone checks for the curated device-mechanism engine (no Streamlit)."""
+import data as D
+
+# --- Task 1: profiles + signatures ---
+neo3 = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Neo (3 mL)")
+sig = D.platform_signature(neo3)
+assert sig["archetype"] == "peninjector", sig
+assert sig["drive"] == D.DRIVE_TORSION, sig
+assert sig["dose"] == "fixed", sig
+
+prot = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Protean P3")
+assert D.platform_signature(prot)["drive"] == D.DRIVE_MANUAL
+
+toby = next(p for p in D.PLATFORM_SHEET if p["variant"] == "Toby")
+tsig = D.platform_signature(toby)
+assert tsig["archetype"] == "autoinjector" and tsig["drive"] == D.DRIVE_SPRING_AI
+assert tsig["dose"] == "na"
+
+for brand in ["Ozempic", "Saxenda", "Toujeo", "Humira", "Trulicity"]:
+    r = D.REFERENCE_PRODUCTS[brand]
+    assert r["mech_drive"] and r["mech_dose"] in ("fixed", "variable")
+    assert r["mech_label"] and r["ob_ref"] and r["ob_claims"]
+
+oz = D.REFERENCE_PRODUCTS["Ozempic"]
+assert oz["mech_drive"] == D.DRIVE_TORSION and oz["mech_dose"] == "variable"
+sax = D.REFERENCE_PRODUCTS["Saxenda"]
+assert sax["mech_drive"] == D.DRIVE_TORSION
+touj = D.REFERENCE_PRODUCTS["Toujeo"]
+assert touj["mech_drive"] == D.DRIVE_MANUAL
+
+print("task1 signatures + profiles: OK")
+
+# --- Task 2: similarity scoring ---
+def _score(brand, variant):
+    p = next(pp for pp in D.PLATFORM_SHEET if pp["variant"] == variant)
+    return D.mechanism_similarity(D.REFERENCE_PRODUCTS[brand], p)
+
+s_neo, b_neo, _ = _score("Ozempic", "Neo (3 mL)")      # torsion vs torsion, dose differs
+assert abs(s_neo - 0.80) < 1e-9 and b_neo == "Close", (s_neo, b_neo)
+
+s_p3, b_p3, _ = _score("Ozempic", "Protean P3")        # torsion vs manual(0.2), dose match
+assert abs(s_p3 - 0.76) < 1e-9 and b_p3 == "Similar", (s_p3, b_p3)
+assert s_neo > s_p3
+
+s_h2, b_h2, _ = _score("Toujeo", "Harmony H2")         # manual vs manual, variable vs variable
+assert abs(s_h2 - 1.0) < 1e-9 and b_h2 == "Close", (s_h2, b_h2)
+
+s_sl, b_sl, _ = _score("Humira", "Safe LAN")           # spring_ai_hv match, dose fixed vs na(0.5)
+assert abs(s_sl - 0.90) < 1e-9 and b_sl == "Close", (s_sl, b_sl)
+
+s_mira, b_mira, _ = _score("Humira", "Mira")           # AI vs On-Body → divergent
+assert b_mira == "Divergent", (s_mira, b_mira)
+
+print("task2 similarity: OK")
+
+# --- Task 3: ranking (hard filter + fallback) ---
+# Ozempic (torsion, 3 mL): Neo ranks above geared Protean; Neo is Close
+r = D.rank_platforms_for_sku("3 mL", D.REFERENCE_PRODUCTS["Ozempic"])
+names = [x["platform"]["variant"] for x in r]
+assert names.index("Neo (3 mL)") < names.index("Protean P3"), names
+assert r[0]["band"] == "Close" and r[0]["pct"] == 80
+
+# Toujeo (manual, 1.5 mL): manual/geared pens Close, above torsion Neo(1.5 mL)
+r2 = {x["platform"]["variant"]: x for x in D.rank_platforms_for_sku("1.5 mL", D.REFERENCE_PRODUCTS["Toujeo"])}
+assert r2["Axiom Max"]["band"] == "Close"
+assert r2["Neo (1.5 mL)"]["score"] < r2["Axiom Max"]["score"]
+
+# Humira high-visc bespoke: Safe LAN Close & first; Mira divergent fallback
+r3 = D.rank_platforms_for_sku("1 mL Bespoke", D.REFERENCE_PRODUCTS["Humira"])
+assert r3[0]["platform"]["variant"] == "Safe LAN" and r3[0]["band"] == "Close"
+mira = next(x for x in r3 if x["platform"]["variant"] == "Mira")
+assert mira["fallback"] is True and mira["band"] == "Divergent"
+
+# Unknown RLD → cartridge-only, band n/a
+r4 = D.rank_platforms_for_sku("3 mL", None)
+assert r4 and all(x["band"] == "n/a" and x["pct"] is None for x in r4)
+
+print("task3 ranking: OK")
