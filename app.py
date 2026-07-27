@@ -109,8 +109,30 @@ if ss.org_map is None:
     ss.org_map = dict(D.ORG_KAM)
 
 
+@st.cache_resource
+def shared_store():
+    """Cross-session store shared by all users of this app instance — survives
+    logout so a request submitted by a customer is visible to the BD Manager and
+    KAM who log in separately. Resets on app reboot/redeploy. Phase-2 replaces
+    this with the Supabase backend (durable + per-user auth)."""
+    return {"requests": {}, "audit": []}
+
+
 def audit_log(actor, action, detail):
-    ss.audit.insert(0, dict(Date=_dt.date.today().isoformat(), Actor=actor, Action=action, Detail=detail))
+    shared_store()["audit"].insert(0, dict(Date=_dt.date.today().isoformat(),
+                                            Actor=actor, Action=action, Detail=detail))
+
+
+def submit_request(user, budget):
+    """Customer submits their request + preliminary budget into the shared store."""
+    reqs = shared_store()["requests"]
+    rid = (user.get("org") or user.get("email") or "req").strip().lower() or "req"
+    reqs[rid] = dict(id=rid, customer=user.get("name", "—"), org=user.get("org") or "—",
+                     region=user.get("region") or "—", market=ss.market, brand=ss.brand,
+                     device=ss.device, sub=f"{ss.sub_fy} {ss.sub_q}",
+                     sku_rows=[dict(r) for r in active_skus()], budget=budget,
+                     status="Awaiting assignment", kam=None, date=_dt.date.today().isoformat())
+    return rid
 
 
 def all_kams():
@@ -200,6 +222,11 @@ def screen_gate():
         c1, c2 = st.columns(2)
         email = c1.text_input("Work email", placeholder="name@company.com")
         phone = c2.text_input("Contact number", placeholder="+91 / +1 …")
+        org, region = "", ""
+        if role.startswith("Pharma"):
+            oc1, oc2 = st.columns(2)
+            org = oc1.text_input("Organization", placeholder="e.g. Pfizer, SANDOX, Pharmathen")
+            region = oc2.selectbox("Region", D.KAM_REGIONS)
         agreed = st.checkbox("I accept the mutual Terms & Conditions and NDA.")
         with st.expander("Read the mutual NDA / Terms & Conditions"):
             st.markdown("**Mutual, two-way NDA** between Shaily Engineering Plastics Ltd. and the accessing "
@@ -208,7 +235,7 @@ def screen_gate():
                         "Indicative pricing is non-binding at R&D stage. Confidentiality survives five (5) years.")
         ok = len(name) > 1 and role != "Select your function…" and "@" in email and len(phone) > 5 and agreed
         if st.button("Agree & enter →", type="primary", use_container_width=True, disabled=not ok):
-            ss.user = dict(name=name, role=role, email=email, phone=phone)
+            ss.user = dict(name=name, role=role, email=email, phone=phone, org=org, region=region)
             ss.is_shaily = role.startswith("Shaily")
             if "BD Manager" in role:
                 ss.screen, ss.dash_tab = "dash", "BD Manager"
@@ -510,12 +537,20 @@ def screen_cost():
                         unsafe_allow_html=True)
 
     with st.container(border=True):
-        section("Negotiate / discuss")
+        section("Submit this request to the Shaily BD desk")
         st.text_area("Comment for the Shaily BD desk", key="neg_comment", placeholder="e.g. Bracket SKU 2–3 into one DV.")
         urg = st.segmented_control("Urgency", ["Level 1 · call back today", "Level 2 · call back this week"],
                                    default="Level 1 · call back today")
-        if st.button("Send to Shaily BD", type="primary"):
-            st.success(f"Sent · {urg}. A BD manager will follow up accordingly.")
+        org = (ss.user or {}).get("org") or ""
+        if not org:
+            st.caption("Tip: sign in with your Organization so the BD Manager can route your request to the right KAM.")
+        if st.button("Submit request to Shaily BD", type="primary"):
+            ss.customer_budget["comment"] = ss.get("neg_comment", "")
+            rid = submit_request(ss.user or {}, ss.customer_budget)
+            audit_log((ss.user or {}).get("name", "Customer"), "Request submitted",
+                      f"{org or 'Customer'} · {ss.brand} · {n_dv} SKU · ${total:,.0f} · {urg}")
+            st.success(f"Submitted to the Shaily BD desk ({urg}). The BD Manager will assign a Key Account Manager. "
+                       f"Reference: {rid}")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -666,26 +701,38 @@ def manager_kam_admin():
                 audit_log(ss.user["name"], "Org linked", f"{no.strip()} → {kams[nk]['name']}"); st.rerun()
 
     with st.container(border=True):
-        section("Incoming customer queries — assign a KAM")
-        for q in D.SAMPLE_QUERIES:
-            kid, basis = D.resolve_kam(q["org"], q["region"], ss.region_map, ss.org_map)
-            assigned = ss.assignments.get(q["id"])
-            cols = st.columns([3, 3, 2, 2])
-            cols[0].markdown(f"**{q['org']}** · {q['region']}<br><span style='color:#6B7C86;font-size:12px'>{q['date']} · {q['product']}</span>", unsafe_allow_html=True)
-            cols[1].caption(q["note"])
-            cols[2].markdown(f"Suggested: **{kams.get(kid, {}).get('name', '—')}**<br><span style='font-size:11px;color:#6B7C86'>by {basis or '—'}</span>", unsafe_allow_html=True)
-            if assigned:
-                cols[3].success(f"→ {kams.get(assigned, {}).get('name', '?')}")
-            elif cols[3].button("Assign", key=f"assign_{q['id']}"):
-                ss.assignments[q["id"]] = kid
-                audit_log(ss.user["name"], "KAM assigned", f"{kams.get(kid, {}).get('name', '?')} → {q['org']} (by {basis})"); st.rerun()
+        section("Incoming customer requests — assign a KAM")
+        reqs = shared_store()["requests"]
+        if not reqs:
+            st.caption("No customer requests submitted yet. A customer submits theirs from the Cost & deal step — it "
+                       "appears here and survives their logout (shared across all sessions of this app).")
+        ko = list(kams.keys())
+        for rid, r in list(reqs.items()):
+            kid, basis = D.resolve_kam(r["org"], r["region"], ss.region_map, ss.org_map)
+            b = r.get("budget") or {}
+            cols = st.columns([3, 2, 2, 3])
+            cols[0].markdown(f"**{r['org']}** · {r['region']}<br><span style='color:#6B7C86;font-size:12px'>{r['date']} · {r['customer']} · {r['brand']}</span>", unsafe_allow_html=True)
+            cols[1].caption(f"{len(r.get('sku_rows', []))} SKU · ${b.get('total', 0):,.0f}")
+            cols[2].markdown(f"Suggested<br>**{kams.get(kid, {}).get('name', '—')}**<br><span style='font-size:11px;color:#6B7C86'>by {basis or '—'}</span>", unsafe_allow_html=True)
+            with cols[3]:
+                if r.get("kam"):
+                    st.success(f"Assigned → {kams.get(r['kam'], {}).get('name', '?')}")
+                else:
+                    di = ko.index(kid) if kid in ko else 0
+                    ac = st.selectbox("Assign to", ko, index=di, format_func=lambda k: kams[k]["name"], key=f"asg_{rid}")
+                    if st.button("Assign KAM", key=f"assign_{rid}"):
+                        r["kam"] = ac
+                        r["status"] = f"Assigned to {kams.get(ac, {}).get('name', '?')}"
+                        audit_log(ss.user["name"], "KAM assigned", f"{kams.get(ac, {}).get('name', '?')} → {r['org']} ({r['brand']})")
+                        st.rerun()
 
     with st.container(border=True):
         section("Audit trail")
-        if ss.audit:
-            st.dataframe(pd.DataFrame(ss.audit), use_container_width=True, hide_index=True)
+        audit = shared_store()["audit"]
+        if audit:
+            st.dataframe(pd.DataFrame(audit), use_container_width=True, hide_index=True)
         else:
-            st.caption("No activity yet — assign a KAM or edit the roster to populate the trail.")
+            st.caption("No activity yet — submit a request or assign a KAM to populate the trail.")
 
 
 def kam_workspace():
@@ -700,50 +747,55 @@ def kam_workspace():
     st.markdown(f"## Welcome, {kams[me]['name']}")
     st.caption("You see only the organizations and responses routed to you.")
 
-    mine = []
-    for q in D.SAMPLE_QUERIES:
-        assigned = ss.assignments.get(q["id"])
-        kid = assigned or D.resolve_kam(q["org"], q["region"], ss.region_map, ss.org_map)[0]
-        if kid == me:
-            mine.append(dict(q, status="Assigned" if assigned else "Auto-routed"))
+    reqs = shared_store()["requests"]
+    mine = [r for r in reqs.values() if r.get("kam") == me]
     regs = [r for r, kk in ss.region_map.items() if kk == me]
     orgs = [o for o, kk in ss.org_map.items() if kk == me]
     k = st.columns(3)
-    kpi(k[0], len(mine), "Assigned queries", "#3D7CA6")
+    kpi(k[0], len(mine), "Assigned requests", "#3D7CA6")
     kpi(k[1], len(regs), "Regions covered", "#7DB343")
     kpi(k[2], len(orgs), "Named organizations", "#E5883B")
 
     st.write("")
     with st.container(border=True):
-        section("My customers & queries")
+        section("My assigned customer requests")
         if mine:
-            st.dataframe(pd.DataFrame([{"Organization": q["org"], "Region": q["region"], "Date": q["date"],
-                                        "Product": q["product"], "Status": q["status"]} for q in mine]),
+            st.dataframe(pd.DataFrame([{"Organization": r["org"], "Region": r["region"], "Date": r["date"],
+                                        "Reference": r["brand"], "SKUs": len(r.get("sku_rows", [])),
+                                        "Budget": f"${(r.get('budget') or {}).get('total', 0):,.0f}",
+                                        "Status": r["status"]} for r in mine]),
                          use_container_width=True, hide_index=True)
         else:
-            st.caption("No organizations currently routed to you.")
+            st.caption("No customer requests assigned to you yet — the BD Manager assigns them from the inbox. "
+                       "(Demo path: submit a request as a customer, then assign it as the BD Manager.)")
+
+    if not mine:
+        return
+
+    labels = {r["id"]: f"{r['org']} · {r['brand']}" for r in mine}
+    active_id = st.selectbox("Working on request", list(labels.keys()),
+                             format_func=lambda x: labels[x], key="kam_active_req")
+    req = next(r for r in mine if r["id"] == active_id)
 
     with st.container(border=True):
         section("Customer request form (read-only)")
-        skus = active_skus()
-        if skus:
+        rows = req.get("sku_rows", [])
+        if rows:
             st.dataframe(pd.DataFrame([{"SKU": r.get("Strength"), "Cartridge": r.get("Cartridge"),
-                                        "Fill (mL)": r.get("Fill (mL)")} for r in skus]),
+                                        "Fill (mL)": r.get("Fill (mL)")} for r in rows]),
                          use_container_width=True, hide_index=True)
-            st.caption(f"Reference: {ss.brand} · market {ss.market} · device {ss.device or '—'} · submission {ss.sub_fy} {ss.sub_q}")
-        else:
-            st.caption("No request form submitted in this session yet (open a Pharma session to populate it).")
+        st.caption(f"Reference: {req['brand']} · market {req.get('market', '—')} · "
+                   f"device {req.get('device') or '—'} · submission {req.get('sub', '—')}")
 
-    # Customer's preliminary budget — the 1st set of costing & services the customer selected
     with st.container(border=True):
         section("Customer's preliminary budget & selected services")
-        cb = ss.get("customer_budget")
+        cb = req.get("budget") or {}
         if cb:
             kk = st.columns(4)
             kpi(kk[0], f"${cb['total']:,.0f}", "Preliminary budget", "#2F6E97")
             kpi(kk[1], f"{cb['n_dv']} SKU", f"DV · {D.SEV_LABEL[cb['severity']]}", "#7DB343")
             kpi(kk[2], f"{cb['timeline']} mo", "Standard timeline", "#E5883B")
-            kpi(kk[3], f"Option {cb['option']}", f"selected · {cb['access']}", "#2E7D46")
+            kpi(kk[3], f"Option {cb['option']}", "customer selection", "#2E7D46")
             st.markdown("**Per-SKU service selection (as chosen by the customer)**")
             st.dataframe(pd.DataFrame(cb["rows"]), use_container_width=True, hide_index=True)
             st.caption(f"DV package ${cb['dv_usd']:,.0f}  ·  Threshold ${cb['thr']:,.0f}  ·  "
@@ -751,7 +803,6 @@ def kam_workspace():
             if cb.get("comment"):
                 st.info(f"💬 Customer note: {cb['comment']}")
 
-            # KAM / BD cost editing (negotiation) — Shaily-internal only
             st.markdown("**Cost adjustment for negotiation (KAM / BD Manager only)**")
             n = cb["n_dv"]
             cur_lead = int(cb["dv_usd"] / 1000 - D.ADD_DV * max(0, n - 1)) if n else D.PKG[cb["severity"]]
@@ -759,25 +810,22 @@ def kam_workspace():
             kam_lead = ac1.number_input("Revised governing DV (K USD)", min_value=0, value=cur_lead, step=10, key="kam_lead")
             rev_dv = (kam_lead + D.ADD_DV * max(0, n - 1)) * 1000 if n else 0
             rev_total = rev_dv + cb["thr"] + cb["ifu"] + cb["hf"]
-            ss.kam_rev_total = rev_total
             ac2.markdown(f"<div style='margin-top:26px'>Revised total <b style='color:#234F70;font-size:17px'>"
                          f"${rev_total:,.0f}</b> &nbsp;<span style='color:#6B7C86'>(customer saw ${cb['total']:,.0f})</span></div>",
                          unsafe_allow_html=True)
-        else:
-            st.caption("The customer has not submitted a preliminary budget in this session yet — it appears here once "
-                       "they complete the Cost & deal step. (Live cross-user push arrives with the Phase-2 backend.)")
 
-        st.markdown("**Your recommendation to the BD Manager for final costing**")
-        rc1, rc2 = st.columns([3, 1])
-        rec = rc1.text_input("Recommendation", key="kam_rec", label_visibility="collapsed",
-                             placeholder="e.g. Recommend 5% concession on DV for the 4-SKU bracket")
-        disabled = not ss.get("customer_budget")
-        if rc2.button("Push to BD Manager", key="kam_push", disabled=disabled) and rec.strip():
-            reft = ss.get("kam_rev_total", ss.customer_budget["total"])
-            audit_log(kams[me]["name"], "Recommendation pushed", f"{rec.strip()} (revised ${reft:,.0f})")
-            st.success("Sent to BD Manager for approval.")
-        if disabled:
-            st.caption("Review the customer's preliminary budget above before recommending.")
+            st.markdown("**Your recommendation to the BD Manager for final costing**")
+            rc1, rc2 = st.columns([3, 1])
+            rec = rc1.text_input("Recommendation", key="kam_rec", label_visibility="collapsed",
+                                 placeholder="e.g. Recommend 5% concession on DV for the 4-SKU bracket")
+            if rc2.button("Push to BD Manager", key="kam_push") and rec.strip():
+                req["recommendation"] = rec.strip(); req["rev_total"] = rev_total
+                req["status"] = "Recommendation with BD Manager"
+                audit_log(kams[me]["name"], "Recommendation pushed",
+                          f"{req['org']}: {rec.strip()} (revised ${rev_total:,.0f})")
+                st.success("Sent to BD Manager for approval.")
+        else:
+            st.caption("This request has no budget attached.")
 
     with st.container(border=True):
         section("Deliverable & pre-requisite schedule")
