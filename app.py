@@ -480,6 +480,12 @@ def screen_cost():
     ifu = int(svc["IFU"].sum()) * D.SERVICES["ifu"]
     hf = int(svc["Human Factor"].sum()) * D.SERVICES["human_factor"]
     total = dv_usd + thr + ifu + hf
+    # Share the customer's preliminary budget & selection with the assigned KAM.
+    ss.customer_budget = dict(
+        brand=ss.brand, market=ss.market, option=ss.chosen_option, access=ss.access_role,
+        severity=sev, timeline=D.TIMELINE[sev], rows=svc.to_dict("records"),
+        dv_usd=dv_usd, thr=thr, ifu=ifu, hf=hf, total=total, n_dv=n_dv,
+        comment=ss.get("neg_comment", ""))
 
     c1, c2 = st.columns([1.3, 1])
     with c1:
@@ -732,12 +738,38 @@ def kam_workspace():
             st.caption(f"Reference: {ss.brand} · market {ss.market} · device {ss.device or '—'} · submission {ss.sub_fy} {ss.sub_q}")
         else:
             st.caption("No request form submitted in this session yet (open a Pharma session to populate it).")
+
+    # Customer's preliminary budget — the 1st set of costing & services the customer selected
+    with st.container(border=True):
+        section("Customer's preliminary budget & selected services")
+        cb = ss.get("customer_budget")
+        if cb:
+            kk = st.columns(4)
+            kpi(kk[0], f"${cb['total']:,.0f}", "Preliminary budget", "#2F6E97")
+            kpi(kk[1], f"{cb['n_dv']} SKU", f"DV · {D.SEV_LABEL[cb['severity']]}", "#7DB343")
+            kpi(kk[2], f"{cb['timeline']} mo", "Standard timeline", "#E5883B")
+            kpi(kk[3], f"Option {cb['option']}", f"selected · {cb['access']}", "#2E7D46")
+            st.markdown("**Per-SKU service selection (as chosen by the customer)**")
+            st.dataframe(pd.DataFrame(cb["rows"]), use_container_width=True, hide_index=True)
+            st.caption(f"DV package ${cb['dv_usd']:,.0f}  ·  Threshold ${cb['thr']:,.0f}  ·  "
+                       f"IFU ${cb['ifu']:,.0f}  ·  Human factor ${cb['hf']:,.0f}")
+            if cb.get("comment"):
+                st.info(f"💬 Customer note: {cb['comment']}")
+        else:
+            st.caption("The customer has not submitted a preliminary budget in this session yet — it appears here once "
+                       "they complete the Cost & deal step. (Live cross-user push arrives with the Phase-2 backend.)")
+
+        st.markdown("**Your recommendation to the BD Manager for final costing**")
         rc1, rc2 = st.columns([3, 1])
-        rec = rc1.text_input("Recommendation to BD Manager (for final costing)", key="kam_rec",
+        rec = rc1.text_input("Recommendation", key="kam_rec", label_visibility="collapsed",
                              placeholder="e.g. Recommend 5% concession on DV for the 4-SKU bracket")
-        if rc2.button("Push to BD Manager", key="kam_push") and rec.strip():
-            audit_log(kams[me]["name"], "Recommendation pushed", rec.strip())
+        disabled = not ss.get("customer_budget")
+        if rc2.button("Push to BD Manager", key="kam_push", disabled=disabled) and rec.strip():
+            audit_log(kams[me]["name"], "Recommendation pushed",
+                      f"{rec.strip()} (ref budget ${ss.customer_budget['total']:,.0f})")
             st.success("Sent to BD Manager for approval.")
+        if disabled:
+            st.caption("Review the customer's preliminary budget above before recommending.")
 
     with st.container(border=True):
         section("Deliverable & pre-requisite schedule")
