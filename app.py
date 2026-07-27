@@ -452,10 +452,7 @@ def screen_cost():
 
     st.markdown('<div class="eyebrow">Step 03 · Tentative cost & deal</div>', unsafe_allow_html=True)
     st.markdown(f"## Costed DV package — Option {ss.chosen_option}")
-    ss.access_role = st.segmented_control("Access mode", ["Customer", "BD (edit all costs)"],
-                                          default=ss.access_role)
-    is_bd = ss.access_role.startswith("BD")
-
+    st.caption("Select the services you need per SKU below. Cost editing and negotiation are handled by your assigned Shaily KAM.")
     section("Service selection — per SKU")
     st.caption("Tick the services required against each SKU. Standard DV covers the platform design verification.")
     base = [{"SKU": r["Strength"], "Platform": chosen.loc[i, "Platform"], "Standard DV": True,
@@ -473,8 +470,6 @@ def screen_cost():
 
     n_dv = int(svc["Standard DV"].sum())
     lead = D.PKG[sev]
-    if is_bd:
-        lead = st.number_input("Governing DV package (K USD)", min_value=0, value=int(lead), step=10)
     dv_usd = (lead + D.ADD_DV * max(0, n_dv - 1)) * 1000 if n_dv else 0
     thr = int(svc["Threshold"].sum()) * D.SERVICES["threshold"]
     ifu = int(svc["IFU"].sum()) * D.SERVICES["ifu"]
@@ -755,6 +750,19 @@ def kam_workspace():
                        f"IFU ${cb['ifu']:,.0f}  ·  Human factor ${cb['hf']:,.0f}")
             if cb.get("comment"):
                 st.info(f"💬 Customer note: {cb['comment']}")
+
+            # KAM / BD cost editing (negotiation) — Shaily-internal only
+            st.markdown("**Cost adjustment for negotiation (KAM / BD Manager only)**")
+            n = cb["n_dv"]
+            cur_lead = int(cb["dv_usd"] / 1000 - D.ADD_DV * max(0, n - 1)) if n else D.PKG[cb["severity"]]
+            ac1, ac2 = st.columns([1, 2])
+            kam_lead = ac1.number_input("Revised governing DV (K USD)", min_value=0, value=cur_lead, step=10, key="kam_lead")
+            rev_dv = (kam_lead + D.ADD_DV * max(0, n - 1)) * 1000 if n else 0
+            rev_total = rev_dv + cb["thr"] + cb["ifu"] + cb["hf"]
+            ss.kam_rev_total = rev_total
+            ac2.markdown(f"<div style='margin-top:26px'>Revised total <b style='color:#234F70;font-size:17px'>"
+                         f"${rev_total:,.0f}</b> &nbsp;<span style='color:#6B7C86'>(customer saw ${cb['total']:,.0f})</span></div>",
+                         unsafe_allow_html=True)
         else:
             st.caption("The customer has not submitted a preliminary budget in this session yet — it appears here once "
                        "they complete the Cost & deal step. (Live cross-user push arrives with the Phase-2 backend.)")
@@ -765,8 +773,8 @@ def kam_workspace():
                              placeholder="e.g. Recommend 5% concession on DV for the 4-SKU bracket")
         disabled = not ss.get("customer_budget")
         if rc2.button("Push to BD Manager", key="kam_push", disabled=disabled) and rec.strip():
-            audit_log(kams[me]["name"], "Recommendation pushed",
-                      f"{rec.strip()} (ref budget ${ss.customer_budget['total']:,.0f})")
+            reft = ss.get("kam_rev_total", ss.customer_budget["total"])
+            audit_log(kams[me]["name"], "Recommendation pushed", f"{rec.strip()} (revised ${reft:,.0f})")
             st.success("Sent to BD Manager for approval.")
         if disabled:
             st.caption("Review the customer's preliminary budget above before recommending.")
