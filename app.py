@@ -96,9 +96,28 @@ _defaults = dict(
     sub_fy="FY26", sub_q="Q3", dossier_fy="FY27", visc_val=None, visc_ref="",
     device=None, differentiated=False, sku_rows=None, chosen_option=1,
     per_sku_services=None, access_role="Customer", wf_id="mah", dash_tab="BD Manager",
+    kam_id="mah", mgr_view="Command centre",
+    kam_extra={}, kam_deleted=[], region_map=None, org_map=None,
+    assignments={}, audit=[], schedule={},
 )
 for k, v in _defaults.items():
     ss.setdefault(k, v)
+# mutable maps default to copies of the seed data (editable in-session)
+if ss.region_map is None:
+    ss.region_map = dict(D.REGION_KAM)
+if ss.org_map is None:
+    ss.org_map = dict(D.ORG_KAM)
+
+
+def audit_log(actor, action, detail):
+    ss.audit.insert(0, dict(Date=_dt.date.today().isoformat(), Actor=actor, Action=action, Detail=detail))
+
+
+def all_kams():
+    """Live KAM roster = seed KAMs minus deleted plus in-session added."""
+    out = {k: v for k, v in D.KAMS.items() if k not in ss.kam_deleted}
+    out.update(ss.kam_extra)
+    return out
 
 
 def header():
@@ -175,7 +194,7 @@ def screen_gate():
         st.markdown('<div class="eyebrow">Access the console</div>', unsafe_allow_html=True)
         st.markdown("### Identify yourself to begin")
         name = st.text_input("Full name", placeholder="e.g. Dr. Anaya Mehta")
-        role = st.selectbox("Role", ["Select your function…", "Shaily — BD Manager", "Shaily — BD Workforce",
+        role = st.selectbox("Role", ["Select your function…", "Shaily — BD Manager", "Shaily — Key Account Manager (KAM)",
                                      "Pharma — Business Development", "Pharma — R&D / Formulation",
                                      "Pharma — Device / Packaging", "Pharma — Program Management"])
         c1, c2 = st.columns(2)
@@ -193,8 +212,8 @@ def screen_gate():
             ss.is_shaily = role.startswith("Shaily")
             if "BD Manager" in role:
                 ss.screen, ss.dash_tab = "dash", "BD Manager"
-            elif "BD Workforce" in role:
-                ss.screen, ss.dash_tab = "dash", "Workforce view"
+            elif "Key Account Manager" in role or "KAM" in role:
+                ss.screen, ss.dash_tab = "dash", "KAM"
             else:
                 ss.screen = "form"
             st.rerun()
@@ -511,9 +530,19 @@ def _heatmap(matrix_dict, rows, cols, title, colorscale):
 
 
 def screen_dash():
-    # Role-locked: BD Manager sees the command centre; Workforce sees only their own view.
-    if ss.user and "Workforce" in ss.user["role"]:
-        dash_workforce()
+    # Role-locked: KAM sees only their own workspace; BD Manager sees the command centre + KAM admin.
+    role = ss.user["role"] if ss.user else ""
+    if "Key Account Manager" in role or "KAM" in role:
+        kam_workspace()
+    else:
+        manager_home()
+
+
+def manager_home():
+    ss.mgr_view = st.segmented_control("mgr", ["Command centre", "KAM & assignments"],
+                                       default=ss.mgr_view, label_visibility="collapsed")
+    if ss.mgr_view == "KAM & assignments":
+        manager_kam_admin()
     else:
         dash_manager()
 
@@ -582,41 +611,168 @@ def dash_manager():
         st.plotly_chart(brand_fig(fig, 260, legend=True), use_container_width=True)
 
 
-def dash_workforce():
-    st.markdown('<div class="eyebrow">Workforce · Individual performance</div>', unsafe_allow_html=True)
-    st.markdown("## My engagements & customer relationships")
-    names = {w["id"]: f'{w["name"]} — {w["region"]}' for w in D.WORKFORCE}
-    ss.wf_id = st.selectbox("Signed-in representative", list(names.keys()),
-                            format_func=lambda x: names[x], index=list(names.keys()).index(ss.wf_id))
-    w = next(x for x in D.WORKFORCE if x["id"] == ss.wf_id)
-    extra = ss.get("wf_calls_extra", {}).get(w["id"], [])
-    calls = extra + w["calls"]
-    rel = D.relationship_score(dict(w, calls=calls))
-    k = st.columns(4)
-    kpi(k[0], len(calls), "Calls logged", "#3D7CA6")
-    kpi(k[1], f'${sum(D.REP_CUSTOMER.get(w["name"], {}).values())}M', "Opportunity created", "#7DB343")
-    kpi(k[2], f'{w["promptness"]}%', "Promptness (Teams)", "#E5883B")
-    kpi(k[3], rel, "Relationship score", "#2E7D46")
+def manager_kam_admin():
+    kams = all_kams()
+    st.markdown('<div class="eyebrow">BD Manager · KAM &amp; assignments</div>', unsafe_allow_html=True)
+    st.markdown("## Key Account Managers & query routing")
+
+    with st.container(border=True):
+        section("KAM roster")
+        rows = []
+        for kid, k in kams.items():
+            regs = [r for r, kk in ss.region_map.items() if kk == kid]
+            orgs = [o for o, kk in ss.org_map.items() if kk == kid]
+            rows.append({"KAM": k["name"], "Login": k.get("login", ""),
+                         "Regions": ", ".join(regs) or "—", "Organizations": ", ".join(orgs) or "—"})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        a, b = st.columns(2)
+        with a:
+            st.markdown("**Add a KAM**")
+            nn = st.text_input("Name", key="add_kam_name", placeholder="e.g. Ms. ROY")
+            nl = st.text_input("Login email", key="add_kam_login", placeholder="roy@shaily.com")
+            if st.button("＋ Add KAM", key="add_kam_btn") and nn.strip():
+                kid = (nn.strip().lower().replace(" ", "").replace(".", "") or "kam")[:8]
+                ss.kam_extra[kid] = dict(id=kid, name=nn.strip(), login=nl.strip())
+                audit_log(ss.user["name"], "KAM added", nn.strip()); st.rerun()
+        with b:
+            st.markdown("**Remove a KAM**")
+            pick = st.selectbox("KAM", list(kams.keys()), format_func=lambda k: kams[k]["name"], key="del_kam_pick")
+            if st.button("🗑 Delete KAM", key="del_kam_btn"):
+                if pick in ss.kam_extra: del ss.kam_extra[pick]
+                else: ss.kam_deleted.append(pick)
+                audit_log(ss.user["name"], "KAM removed", kams[pick]["name"]); st.rerun()
+
+    with st.container(border=True):
+        section("Link KAM to region / organization")
+        ko = list(kams.keys())
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Region → KAM**")
+            for reg in D.KAM_REGIONS:
+                cur = ss.region_map.get(reg)
+                ss.region_map[reg] = st.selectbox(reg, ko, index=ko.index(cur) if cur in ko else 0,
+                                                   format_func=lambda k: kams[k]["name"], key=f"reg_{reg}")
+        with c2:
+            st.markdown("**Organization → KAM (override)**")
+            for org in list(ss.org_map.keys()):
+                cur = ss.org_map.get(org)
+                ss.org_map[org] = st.selectbox(org, ko, index=ko.index(cur) if cur in ko else 0,
+                                               format_func=lambda k: kams[k]["name"], key=f"org_{org}")
+            no = st.text_input("Add organization", key="add_org_name", placeholder="e.g. Cipla")
+            nk = st.selectbox("Assign to", ko, format_func=lambda k: kams[k]["name"], key="add_org_kam")
+            if st.button("＋ Add organization link", key="add_org_btn") and no.strip():
+                ss.org_map[no.strip()] = nk
+                audit_log(ss.user["name"], "Org linked", f"{no.strip()} → {kams[nk]['name']}"); st.rerun()
+
+    with st.container(border=True):
+        section("Incoming customer queries — assign a KAM")
+        for q in D.SAMPLE_QUERIES:
+            kid, basis = D.resolve_kam(q["org"], q["region"], ss.region_map, ss.org_map)
+            assigned = ss.assignments.get(q["id"])
+            cols = st.columns([3, 3, 2, 2])
+            cols[0].markdown(f"**{q['org']}** · {q['region']}<br><span style='color:#6B7C86;font-size:12px'>{q['date']} · {q['product']}</span>", unsafe_allow_html=True)
+            cols[1].caption(q["note"])
+            cols[2].markdown(f"Suggested: **{kams.get(kid, {}).get('name', '—')}**<br><span style='font-size:11px;color:#6B7C86'>by {basis or '—'}</span>", unsafe_allow_html=True)
+            if assigned:
+                cols[3].success(f"→ {kams.get(assigned, {}).get('name', '?')}")
+            elif cols[3].button("Assign", key=f"assign_{q['id']}"):
+                ss.assignments[q["id"]] = kid
+                audit_log(ss.user["name"], "KAM assigned", f"{kams.get(kid, {}).get('name', '?')} → {q['org']} (by {basis})"); st.rerun()
+
+    with st.container(border=True):
+        section("Audit trail")
+        if ss.audit:
+            st.dataframe(pd.DataFrame(ss.audit), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No activity yet — assign a KAM or edit the roster to populate the trail.")
+
+
+def kam_workspace():
+    kams = all_kams()
+    if ss.kam_id not in kams:
+        ss.kam_id = list(kams)[0]
+    st.markdown('<div class="eyebrow">Key Account Manager · Workspace</div>', unsafe_allow_html=True)
+    ss.kam_id = st.selectbox("Signed-in KAM (simulated individual login)", list(kams.keys()),
+                             format_func=lambda k: f"{kams[k]['name']} · {kams[k].get('login', '')}",
+                             index=list(kams.keys()).index(ss.kam_id))
+    me = ss.kam_id
+    st.markdown(f"## Welcome, {kams[me]['name']}")
+    st.caption("You see only the organizations and responses routed to you.")
+
+    mine = []
+    for q in D.SAMPLE_QUERIES:
+        assigned = ss.assignments.get(q["id"])
+        kid = assigned or D.resolve_kam(q["org"], q["region"], ss.region_map, ss.org_map)[0]
+        if kid == me:
+            mine.append(dict(q, status="Assigned" if assigned else "Auto-routed"))
+    regs = [r for r, kk in ss.region_map.items() if kk == me]
+    orgs = [o for o, kk in ss.org_map.items() if kk == me]
+    k = st.columns(3)
+    kpi(k[0], len(mine), "Assigned queries", "#3D7CA6")
+    kpi(k[1], len(regs), "Regions covered", "#7DB343")
+    kpi(k[2], len(orgs), "Named organizations", "#E5883B")
 
     st.write("")
     with st.container(border=True):
-        section("Log a customer call")
-        c1, c2 = st.columns(2)
-        cust = c1.text_input("Customer", key="call_cust", placeholder="e.g. Auro")
-        ctx = c2.text_input("Context (one line)", key="call_ctx", placeholder="e.g. Neo sampling for 4 SKUs")
-        if st.button("Log call & update score", type="primary"):
-            if ctx.strip():
-                ss.setdefault("wf_calls_extra", {}).setdefault(w["id"], []).insert(
-                    0, (_dt.date.today().isoformat(), (f"{cust} — " if cust.strip() else "") + ctx.strip()))
-                st.rerun()
-            else:
-                st.warning("Add a one-line context to log the call.")
-        st.caption("📎 Meetings auto-sync from Microsoft Teams in the production build.")
+        section("My customers & queries")
+        if mine:
+            st.dataframe(pd.DataFrame([{"Organization": q["org"], "Region": q["region"], "Date": q["date"],
+                                        "Product": q["product"], "Status": q["status"]} for q in mine]),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.caption("No organizations currently routed to you.")
 
     with st.container(border=True):
-        section("Call log")
-        st.dataframe(pd.DataFrame([{"Date": d, "Context": c} for d, c in calls]),
-                     use_container_width=True, hide_index=True)
+        section("Customer request form (read-only)")
+        skus = active_skus()
+        if skus:
+            st.dataframe(pd.DataFrame([{"SKU": r.get("Strength"), "Cartridge": r.get("Cartridge"),
+                                        "Fill (mL)": r.get("Fill (mL)")} for r in skus]),
+                         use_container_width=True, hide_index=True)
+            st.caption(f"Reference: {ss.brand} · market {ss.market} · device {ss.device or '—'} · submission {ss.sub_fy} {ss.sub_q}")
+        else:
+            st.caption("No request form submitted in this session yet (open a Pharma session to populate it).")
+        rc1, rc2 = st.columns([3, 1])
+        rec = rc1.text_input("Recommendation to BD Manager (for final costing)", key="kam_rec",
+                             placeholder="e.g. Recommend 5% concession on DV for the 4-SKU bracket")
+        if rc2.button("Push to BD Manager", key="kam_push") and rec.strip():
+            audit_log(kams[me]["name"], "Recommendation pushed", rec.strip())
+            st.success("Sent to BD Manager for approval.")
+
+    with st.container(border=True):
+        section("Deliverable & pre-requisite schedule")
+        st.caption("Set the FY quarter and confirm responsibility. KAM items carry an upload; component drawings expand "
+                   "to the three components with revision tracking and change control.")
+        for i, d in enumerate(D.DELIVERABLES):
+            with st.container(border=True):
+                top = st.columns([4, 2, 2])
+                top[0].markdown(f"**{d['item']}**")
+                key = f"dl_{i}"
+                top[1].selectbox("FY quarter", ["— select —"] + D.FY_QUARTERS, key=f"{key}_fq", label_visibility="collapsed")
+                rc = "#2F6E97" if d["resp"] == "KAM" else "#2E7D46"
+                top[2].markdown(f"<div style='margin-top:5px'><span class='pill' style='color:{rc}'>Responsibility · {d['resp']}</span></div>", unsafe_allow_html=True)
+                if d.get("query"):
+                    st.text_input("Issue faced", key=f"{key}_issue", placeholder="Describe the functionality failure")
+                    st.caption("Query date auto-stamped · Responsibility: Customer")
+                elif d.get("components"):
+                    for c in d["components"]:
+                        cc = st.columns([3, 1, 2])
+                        cc[0].markdown(f"• {c}")
+                        cc[1].text_input("Rev", key=f"{key}_{c}_rev", placeholder="Rev 00", label_visibility="collapsed")
+                        cc[2].file_uploader("＋ drawing", key=f"{key}_{c}_file", label_visibility="collapsed")
+                    st.text_input("Change-control reference", key=f"{key}_cc", placeholder="Change control ref (if any)")
+                    if st.button("Post drawings & notify customer", key=f"{key}_notify"):
+                        audit_log(kams[me]["name"], "Drawings posted", f"{d['item']} — customer notified")
+                        st.success("Posted. Customer receives a notification with revisions & change-control.")
+                elif d.get("upload"):
+                    u = st.columns([3, 1])
+                    u[0].file_uploader("＋ upload package", key=f"{key}_file", label_visibility="collapsed")
+                    if u[1].button("Notify", key=f"{key}_notify"):
+                        audit_log(kams[me]["name"], "Deliverable posted", d["item"])
+                        st.success("Uploaded & customer notified.")
+        if st.button("Push final cost & schedule to customer", type="primary", key="push_schedule"):
+            audit_log(kams[me]["name"], "Schedule pushed", "Final cost & deliverable schedule sent to customer")
+            st.success("Final cost structure and deliverable schedule pushed to the customer.")
 
 
 # ────────────────────────────────────────────────────────────────────────────
