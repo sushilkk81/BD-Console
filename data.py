@@ -405,3 +405,64 @@ WORKFORCE = [
 def relationship_score(w) -> int:
     recency = min(100, 60 + len(w["calls"]) * 8) if w["calls"] else 40
     return round(recency * 0.6 + w["promptness"] * 0.4)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Key Account Managers (KAM)  — renamed from "BD Workforce"
+# Each KAM has a unique login (real auth is a Phase-2 backend feature).
+# ═══════════════════════════════════════════════════════════════════════════
+KAMS = {
+    "mah": dict(id="mah", name="Mr. MAH", login="mah@shaily.com"),
+    "muk": dict(id="muk", name="Mr. MUK", login="muk@shaily.com"),
+    "han": dict(id="han", name="Mr. HAN", login="han@shaily.com"),
+    "fed": dict(id="fed", name="Mr. FED", login="fed@shaily.com"),
+}
+KAM_REGIONS = ["India (South Region)", "India (North Region)", "Europe", "Asia (other than India)"]
+# Region → KAM (default assignment)
+REGION_KAM = {
+    "India (South Region)": "mah",
+    "India (North Region)": "muk",
+    "Europe": "han",
+    "Asia (other than India)": "fed",
+}
+# Organization-specific KAM overrides (for bigger organizations)
+ORG_KAM = {"SANDOX": "muk", "Pfizer": "mah", "DEMO": "han", "Pharmathen": "han"}
+
+
+def resolve_kam(org=None, region=None, region_map=None, org_map=None):
+    """Organization override wins; otherwise fall back to the region mapping."""
+    om = org_map if org_map is not None else ORG_KAM
+    rm = region_map if region_map is not None else REGION_KAM
+    if org and org in om:
+        return om[org], "organization"
+    if region and region in rm:
+        return rm[region], "region"
+    return None, None
+
+
+# Deliverable / pre-requisite catalogue for the KAM schedule
+DELIVERABLES = [
+    dict(item="User Requirement Document", resp="Customer", upload=False),
+    dict(item="Component drawings & specifications", resp="KAM", upload=True,
+         components=["Cartridge holder", "Pen Body", "Pen Cap"]),
+    dict(item="Cartridge Drawings (fill volume & tolerances, plunger-stopper position)", resp="KAM", upload=True),
+    dict(item="PFS Drawings (fill volume & tolerances, plunger-stopper position)", resp="KAM", upload=True),
+    dict(item="Filled Cartridges", resp="Customer", upload=False),
+    dict(item="Filled PFS", resp="Customer", upload=False),
+    dict(item="Assembly Guide for the Customer", resp="KAM", upload=True),
+    dict(item="Design Verification Package", resp="KAM", upload=True),
+    dict(item="Aging Study Package", resp="KAM", upload=True),
+    dict(item="DMF filing", resp="KAM", upload=False),
+    dict(item="Functionality Failure related queries", resp="Customer", upload=False, query=True),
+]
+FY_QUARTERS = [f"{fy} {q}" for fy in ["FY26", "FY27", "FY28"] for q in ["Q1", "Q2", "Q3", "Q4"]]
+
+# Demo customer queries (BD Manager inbox)
+SAMPLE_QUERIES = [
+    dict(id="q1", org="Pfizer", region="Europe", date="2026-07-22",
+         product="Semaglutide (Ozempic ref)", note="4 SKUs — need Neo mapping + costing"),
+    dict(id="q2", org="SANDOX", region="India (North Region)", date="2026-07-24",
+         product="Liraglutide (Victoza ref)", note="Harmony 3 mL, 3 SKUs"),
+    dict(id="q3", org="Pharmathen", region="Europe", date="2026-07-26",
+         product="Dulaglutide (Trulicity ref)", note="AI Toby, 2 SKUs"),
+]
