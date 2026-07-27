@@ -215,36 +215,47 @@ def screen_gate():
     with right:
         st.markdown('<div class="eyebrow">Access the console</div>', unsafe_allow_html=True)
         st.markdown("### Identify yourself to begin")
-        name = st.text_input("Full name", placeholder="e.g. Dr. Anaya Mehta")
-        role = st.selectbox("Role", ["Select your function…", "Shaily — BD Manager", "Shaily — Key Account Manager (KAM)",
-                                     "Pharma — Business Development", "Pharma — R&D / Formulation",
-                                     "Pharma — Device / Packaging", "Pharma — Program Management"])
-        c1, c2 = st.columns(2)
-        email = c1.text_input("Work email", placeholder="name@company.com")
-        phone = c2.text_input("Contact number", placeholder="+91 / +1 …")
-        org, region = "", ""
-        if role.startswith("Pharma"):
-            oc1, oc2 = st.columns(2)
-            org = oc1.text_input("Organization", placeholder="e.g. Pfizer, SANDOX, Pharmathen")
-            region = oc2.selectbox("Region", D.KAM_REGIONS)
+        name = st.text_input("Name", placeholder="e.g. Dr. Anaya Mehta")
+        # Email drives role: a Shaily-domain sign-in is an internal user; anything
+        # else is a customer. Org / region are no longer collected here — the BD
+        # Manager tags routing inside the portal.
+        email = st.text_input("Organization email", key="gate_email", placeholder="name@company.com")
+        is_shaily = "@shaily." in email.lower()
+
+        if is_shaily:
+            role_options = ["Select your function…", "Key Account Manager", "BD Manager"]
+            role_label = "Designation / Role · Shaily domain recognised"
+        else:
+            role_options = ["Select your function…", "R&D Packaging", "Supply Chain",
+                            "Business Development", "Others — Specify"]
+            role_label = "Designation / Role"
+        role = st.selectbox(role_label, role_options)
+
+        other = ""
+        if role == "Others — Specify":
+            other = st.text_input("Please specify your function", placeholder="e.g. Regulatory Affairs")
+
+        phone = st.text_input("Contact number", placeholder="+91 / +1 …")
         agreed = st.checkbox("I accept the mutual Terms & Conditions and NDA.")
         with st.expander("Read the mutual NDA / Terms & Conditions"):
             st.markdown("**Mutual, two-way NDA** between Shaily Engineering Plastics Ltd. and the accessing "
                         "organisation. All exchanged information is confidential, used solely to progress the "
                         "programme, disclosed to no third party, and restricted to named users. No screenshots. "
                         "Indicative pricing is non-binding at R&D stage. Confidentiality survives five (5) years.")
-        ok = len(name) > 1 and role != "Select your function…" and "@" in email and len(phone) > 5 and agreed
+        role_ok = role != "Select your function…" and (role != "Others — Specify" or len(other.strip()) > 1)
+        ok = len(name) > 1 and role_ok and "@" in email and len(phone) > 5 and agreed
         if st.button("Agree & enter →", type="primary", use_container_width=True, disabled=not ok):
-            ss.user = dict(name=name, role=role, email=email, phone=phone, org=org, region=region)
-            ss.is_shaily = role.startswith("Shaily")
-            if "BD Manager" in role:
+            final_role = other.strip() if role == "Others — Specify" else role
+            ss.user = dict(name=name, role=final_role, email=email, phone=phone, org="", region="")
+            ss.is_shaily = is_shaily
+            if is_shaily and role == "BD Manager":
                 ss.screen, ss.dash_tab = "dash", "BD Manager"
-            elif "Key Account Manager" in role or "KAM" in role:
+            elif is_shaily and role == "Key Account Manager":
                 ss.screen, ss.dash_tab = "dash", "KAM"
             else:
                 ss.screen = "form"
             st.rerun()
-        st.caption("🔒 Session bound to your email · Watermarked · Mutual NDA · BD roles open the dashboard directly")
+        st.caption("🔒 Session bound to your email · Watermarked · Mutual NDA · Shaily-domain sign-ins open the internal dashboard")
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -543,7 +554,7 @@ def screen_cost():
                                    default="Level 1 · call back today")
         org = (ss.user or {}).get("org") or ""
         if not org:
-            st.caption("Tip: sign in with your Organization so the BD Manager can route your request to the right KAM.")
+            st.caption("The Shaily BD Manager tags your organization and routes this request to the right KAM after submission.")
         if st.button("Submit request to Shaily BD", type="primary"):
             ss.customer_budget["comment"] = ss.get("neg_comment", "")
             rid = submit_request(ss.user or {}, ss.customer_budget)
