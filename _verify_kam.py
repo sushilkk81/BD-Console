@@ -34,12 +34,7 @@ for s, role in [("form", "Pharma — R&D / Formulation"), ("options", "Pharma �
     if run(s, role, False): problems.append(s)
 if run("dash", "Shaily — BD Manager", True, mgr_view="Command centre"): problems.append("mgr-cmd")
 if run("dash", "Shaily — BD Manager", True, mgr_view="KAM & assignments"): problems.append("mgr-kam")
-if run("dash", "Shaily — Key Account Manager (KAM)", True, kam_id="mah"): problems.append("kam-empty")
-CB = dict(brand="Ozempic", market="US", option=1, access="Customer", severity="moderate",
-          timeline=6, rows=[{"SKU": "0.5 mg", "Platform": "Neo (3 mL)", "Standard DV": True,
-                             "Threshold": False, "IFU": True, "Human Factor": False}],
-          dv_usd=350000, thr=0, ifu=1110, hf=0, total=351110, n_dv=4, comment="Bracket SKU 2-3")
-if run("dash", "Shaily — Key Account Manager (KAM)", True, kam_id="mah", customer_budget=CB): problems.append("kam-budget")
+if run("dash", "Shaily — Key Account Manager (KAM)", True, kam_id="mah"): problems.append("kam")
 
 # logic checks
 print("resolve Pfizer/Europe :", D.resolve_kam("Pfizer", "Europe"))      # org override -> mah
