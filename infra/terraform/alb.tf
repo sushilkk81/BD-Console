@@ -24,6 +24,18 @@ resource "aws_security_group" "alb" {
   }
 }
 
+# The frontend task calls the backend listener at runtime through the ALB.
+# Keep this as a standalone rule to avoid a dependency cycle between the ALB
+# and ECS security groups, which otherwise reference each other.
+resource "aws_security_group_rule" "alb_backend_from_ecs" {
+  type                     = "ingress"
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.alb.id
+  source_security_group_id = aws_security_group.ecs.id
+}
+
 resource "aws_lb" "main" {
   name               = "${var.project}-alb"
   internal           = false
