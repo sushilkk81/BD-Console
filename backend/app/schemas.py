@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr
 class LoginRequest(BaseModel):
     name: str
     email: EmailStr
-    role: str | None = None  # required when email domain is shaily.com
+    role: Optional[str] = None  # required when email domain is shaily.com
 
 
 class UserOut(BaseModel):
@@ -26,7 +26,7 @@ class LoginResponse(BaseModel):
 class RequestCreate(BaseModel):
     brand: str
     market: str
-    device: str | None = None
+    device: Optional[str] = None
     total: float = 0
 
 
@@ -36,6 +36,6 @@ class RequestOut(BaseModel):
     submitted_by: int
     brand: str
     market: str
-    device: str | None
+    device: Optional[str]
     status: str
     total: float
