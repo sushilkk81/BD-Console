@@ -1,0 +1,32 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export async function login(name: string, email: string, role?: string) {
+  const resp = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, role }),
+  });
+  if (!resp.ok) throw new Error(`Login failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function createRequest(
+  token: string,
+  body: { brand: string; market: string; device?: string }
+) {
+  const resp = await fetch(`${API_URL}/requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Create request failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function listRequests(token: string) {
+  const resp = await fetch(`${API_URL}/requests`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error(`List requests failed: ${resp.status}`);
+  return resp.json();
+}
