@@ -87,7 +87,7 @@ resource "aws_ecs_task_definition" "frontend" {
     image        = "${aws_ecr_repository.frontend.repository_url}:latest"
     portMappings = [{ containerPort = 3000 }]
     environment = [
-      { name = "NEXT_PUBLIC_API_URL", value = "http://${aws_lb.main.dns_name}:8080" },
+      { name = "API_URL", value = "http://${aws_lb.main.dns_name}:8080" },
     ]
     logConfiguration = {
       logDriver = "awslogs"
