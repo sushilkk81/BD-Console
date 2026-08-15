@@ -6,6 +6,7 @@ import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { SelectField } from "@/components/SelectField";
 import { Card } from "@/components/Card";
+import { Banner } from "@/components/Banner";
 
 const INTERNAL_ROLES = ["BD Manager", "Key Account Manager"];
 
@@ -44,6 +45,8 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
         setFieldErrors(err.fieldErrors);
+      } else if (err instanceof ApiError) {
+        setBannerError(err.message);
       } else {
         setBannerError("We couldn't sign you in — check your name and email and try again.");
       }
@@ -53,7 +56,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
+    <>
+      <div
+        className="h-1 w-full bg-gradient-to-r from-forest-600 via-lime-500 to-orange-500"
+        aria-hidden="true"
+      />
+      <main className="flex min-h-screen flex-col items-center justify-center px-4 py-12">
       <div className="mb-8 flex items-center gap-3">
         <span className="grid h-8 w-8 grid-cols-2 grid-rows-2 overflow-hidden rounded-md" aria-hidden="true">
           <span className="bg-forest-600" />
@@ -80,6 +88,8 @@ export default function LoginPage() {
             className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ${
               isInternal ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
             }`}
+            aria-hidden={!isInternal}
+            inert={!isInternal ? true : undefined}
           >
             <div className="overflow-hidden">
               <SelectField
@@ -93,16 +103,13 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          {bannerError && (
-            <p role="alert" className="rounded-lg bg-orange-500/10 px-3.5 py-2.5 font-body text-sm text-orange-500">
-              {bannerError}
-            </p>
-          )}
+          {bannerError && <Banner message={bannerError} onDismiss={() => setBannerError("")} />}
           <Button type="submit" loading={submitting} className="mt-2 w-full">
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>
       </Card>
-    </main>
+      </main>
+    </>
   );
 }

@@ -28,7 +28,7 @@ export function TextField({ label, name, type = "text", value, onChange, require
         }`}
       />
       {error && (
-        <p id={`${name}-error`} className="font-body text-xs text-orange-500">
+        <p id={`${name}-error`} className="font-body text-xs text-orange-700">
           {error}
         </p>
       )}

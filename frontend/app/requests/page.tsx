@@ -7,6 +7,7 @@ import { TextField } from "@/components/TextField";
 import { SelectField } from "@/components/SelectField";
 import { Card } from "@/components/Card";
 import { Header } from "@/components/Header";
+import { Banner } from "@/components/Banner";
 import { StatusChip } from "@/components/StatusChip";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonRow, MobileSkeletonCard } from "@/components/Skeleton";
@@ -36,6 +37,7 @@ export default function RequestsPage() {
   const [market, setMarket] = useState("US");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [bannerError, setBannerError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
@@ -50,7 +52,9 @@ export default function RequestsPage() {
     if (rawUser) setUserName(JSON.parse(rawUser).name);
     listRequests(t)
       .then(setRequests)
-      .catch(() => setBannerError("We couldn't load your requests — try again."))
+      .catch((err) =>
+        setLoadError(err instanceof ApiError ? err.message : "We couldn't load your requests — try again.")
+      )
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -108,26 +112,27 @@ export default function RequestsPage() {
               </Button>
             </form>
             {bannerError && (
-              <p
-                role="alert"
-                className="mt-4 rounded-lg bg-orange-500/10 px-3.5 py-2.5 font-body text-sm text-orange-500"
-              >
-                {bannerError}
-              </p>
+              <div className="mt-4">
+                <Banner message={bannerError} onDismiss={() => setBannerError("")} />
+              </div>
             )}
           </Card>
         </section>
 
         <section>
           <h2 className="mb-4 font-display text-lg font-semibold text-forest-900">Your requests</h2>
-          <Card className="p-0">
-            {!loading && requests.length === 0 ? (
+          <Card padding="p-0">
+            {loadError ? (
+              <div className="p-6">
+                <Banner message={loadError} onDismiss={() => setLoadError("")} />
+              </div>
+            ) : !loading && requests.length === 0 ? (
               <EmptyState message="No requests yet — submit your first one above." />
             ) : (
               <>
                 <table className="hidden w-full text-left sm:table">
                   <thead>
-                    <tr className="border-b border-ink-700/10 font-body text-xs uppercase tracking-wide text-ink-700/50">
+                    <tr className="border-b border-ink-700/10 font-body text-xs uppercase tracking-wide text-ink-700/70">
                       <th className="px-4 py-3 font-medium">ID</th>
                       <th className="px-4 py-3 font-medium">Brand</th>
                       <th className="px-4 py-3 font-medium">Market</th>
@@ -178,7 +183,7 @@ export default function RequestsPage() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-body text-sm font-medium text-ink-700">{r.brand}</span>
-                          <span className="font-mono text-xs text-ink-700/50">#{r.id}</span>
+                          <span className="font-mono text-xs text-ink-700/70">#{r.id}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="font-body text-sm text-ink-700/70">{r.market}</span>

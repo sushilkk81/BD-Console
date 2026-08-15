@@ -50,7 +50,7 @@ export function SelectField({
         ))}
       </select>
       {error && (
-        <p id={`${name}-error`} className="font-body text-xs text-orange-500">
+        <p id={`${name}-error`} className="font-body text-xs text-orange-700">
           {error}
         </p>
       )}
