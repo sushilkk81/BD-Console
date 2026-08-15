@@ -4,6 +4,9 @@ set -euo pipefail
 ALB_DNS="${1:?Usage: smoke_test.sh <alb-dns-name>}"
 BASE="http://${ALB_DNS}:8080"
 
+echo "→ Frontend serves the login page"
+curl -sf "http://${ALB_DNS}/login" | grep -q "Sign in to the BD Console"
+
 echo "→ Health check"
 curl -sf "${BASE}/health" | grep -q '"status":"ok"'
 
