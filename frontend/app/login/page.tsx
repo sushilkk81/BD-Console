@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, ApiError } from "@/lib/api";
+import { LANDING } from "@/lib/session";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { SelectField } from "@/components/SelectField";
@@ -41,7 +42,7 @@ export default function LoginPage() {
       const result = await login(name, email, isInternal ? role : undefined);
       localStorage.setItem("bdconsole_token", result.access_token);
       localStorage.setItem("bdconsole_user", JSON.stringify(result.user));
-      router.push("/requests");
+      router.push(LANDING[result.user.role as keyof typeof LANDING] ?? "/requests");
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
         setFieldErrors(err.fieldErrors);

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createRequest, listRequests, ApiError } from "@/lib/api";
+import { createRequest, listRequests, ApiError, RequestRow } from "@/lib/api";
+import { useRoleGuard } from "@/lib/session";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { SelectField } from "@/components/SelectField";
@@ -12,15 +12,6 @@ import { StatusChip } from "@/components/StatusChip";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonRow, MobileSkeletonCard } from "@/components/Skeleton";
 
-type RequestRow = {
-  id: number;
-  brand: string;
-  market: string;
-  device: string | null;
-  status: string;
-  total: number;
-};
-
 const MARKETS = [
   { value: "US", label: "US" },
   { value: "EU", label: "EU" },
@@ -28,9 +19,7 @@ const MARKETS = [
 ];
 
 export default function RequestsPage() {
-  const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | undefined>();
+  const { token, user } = useRoleGuard("Customer");
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [brand, setBrand] = useState("");
@@ -42,21 +31,14 @@ export default function RequestsPage() {
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
   useEffect(() => {
-    const t = localStorage.getItem("bdconsole_token");
-    if (!t) {
-      router.replace("/login");
-      return;
-    }
-    setToken(t);
-    const rawUser = localStorage.getItem("bdconsole_user");
-    if (rawUser) setUserName(JSON.parse(rawUser).name);
-    listRequests(t)
+    if (!token) return;
+    listRequests(token)
       .then(setRequests)
       .catch((err) =>
         setLoadError(err instanceof ApiError ? err.message : "We couldn't load your requests — try again.")
       )
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [token]);
 
   function validate(): Record<string, string> {
     const errors: Record<string, string> = {};
@@ -95,7 +77,7 @@ export default function RequestsPage() {
 
   return (
     <>
-      <Header userName={userName} />
+      <Header userName={user?.name} />
       <main className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
         <section>
           <h1 className="mb-4 font-display text-lg font-semibold text-forest-900">New request</h1>
