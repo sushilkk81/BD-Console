@@ -1,6 +1,9 @@
 import Image from "next/image";
 
-export function Header({ userName }: { userName?: string }) {
+// `role` is accepted here (typed only, unused) so pages can start passing it ahead
+// of a later task that adds role-specific nav links on top of this prop.
+export function Header({ userName, role }: { userName?: string; role?: string }) {
+  void role;
   return (
     <header className="border-b border-ink-700/10 bg-white">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
