@@ -34,6 +34,7 @@ class RequestCreate(BaseModel):
 class RequestOut(BaseModel):
     id: int
     org_id: int
+    org_name: str
     submitted_by: int
     brand: str
     market: str
@@ -41,6 +42,9 @@ class RequestOut(BaseModel):
     status: str
     total: float
     assigned_kam_id: Optional[int] = None
+    assigned_kam_name: Optional[str] = None
+    suggested_kam_id: Optional[int] = None
+    suggested_kam_name: Optional[str] = None
 
 
 class KamOut(BaseModel):

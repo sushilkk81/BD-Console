@@ -3,19 +3,35 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Request, User
+from app.models import Organization, OrgKamMap, Request, User
 from app.schemas import RequestCreate, RequestOut
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 
-# Temporary shim — Task 4 replaces this with the real role-aware version.
 def serialize_requests(db: Session, reqs: list[Request]) -> list[RequestOut]:
-    return [RequestOut(
-        id=r.id, org_id=r.org_id, submitted_by=r.submitted_by, brand=r.brand,
-        market=r.market, device=r.device, status=r.status, total=r.total,
-        assigned_kam_id=r.assigned_kam_id,
-    ) for r in reqs]
+    if not reqs:
+        return []
+    org_ids = {r.org_id for r in reqs}
+    orgs = {o.id: o.name for o in db.query(Organization).filter(Organization.id.in_(org_ids))}
+    org_kam = {m.org_id: m.kam_user_id for m in db.query(OrgKamMap).filter(OrgKamMap.org_id.in_(org_ids))}
+
+    kam_ids = {r.assigned_kam_id for r in reqs if r.assigned_kam_id} | set(org_kam.values())
+    kam_names = {u.id: u.name for u in db.query(User).filter(User.id.in_(kam_ids))} if kam_ids else {}
+
+    out = []
+    for r in reqs:
+        suggested_id = org_kam.get(r.org_id)
+        out.append(RequestOut(
+            id=r.id, org_id=r.org_id, org_name=orgs.get(r.org_id, ""),
+            submitted_by=r.submitted_by, brand=r.brand, market=r.market, device=r.device,
+            status=r.status, total=r.total,
+            assigned_kam_id=r.assigned_kam_id,
+            assigned_kam_name=kam_names.get(r.assigned_kam_id) if r.assigned_kam_id else None,
+            suggested_kam_id=suggested_id,
+            suggested_kam_name=kam_names.get(suggested_id) if suggested_id else None,
+        ))
+    return out
 
 
 @router.post("", response_model=RequestOut, status_code=201)
@@ -27,9 +43,17 @@ def create_request(payload: RequestCreate, db: Session = Depends(get_db),
     db.add(req)
     db.commit()
     db.refresh(req)
-    return req
+    return serialize_requests(db, [req])[0]
 
 
 @router.get("", response_model=list[RequestOut])
 def list_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.query(Request).filter_by(org_id=current_user.org_id).order_by(Request.created_at.desc()).all()
+    q = db.query(Request)
+    if current_user.role == "BD Manager":
+        q = q.filter(Request.org_id != current_user.org_id)
+    elif current_user.role == "Key Account Manager":
+        q = q.filter(Request.assigned_kam_id == current_user.id)
+    else:
+        q = q.filter(Request.org_id == current_user.org_id)
+    reqs = q.order_by(Request.created_at.desc()).all()
+    return serialize_requests(db, reqs)
