@@ -16,6 +16,9 @@ app.include_router(requests_router)
 from app.routers.kams import router as kams_router
 app.include_router(kams_router)
 
+from app.routers.dashboard import router as dashboard_router
+app.include_router(dashboard_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

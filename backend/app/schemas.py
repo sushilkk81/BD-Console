@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr
@@ -61,3 +62,28 @@ class OrgKamMapUpdate(BaseModel):
 
 class AssignKamRequest(BaseModel):
     kam_user_id: int
+
+
+class DashboardLive(BaseModel):
+    requests_by_status: dict[str, int]
+    total_requests: int
+
+
+class DashboardMetricsOut(BaseModel):
+    quarterly_target: dict
+    new_customers_qtr: dict
+    platform_production: dict
+    rep_quarterly: dict
+    rep_platform_matrix: dict
+    rep_customer_matrix: dict
+    live: DashboardLive
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    org_id: Optional[int]
+    org_name: Optional[str] = None
+    actor_name: str
+    action: str
+    detail: str
+    created_at: dt.datetime
