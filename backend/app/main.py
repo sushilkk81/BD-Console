@@ -13,6 +13,9 @@ app.include_router(auth_router)
 from app.routers.requests import router as requests_router
 app.include_router(requests_router)
 
+from app.routers.kams import router as kams_router
+app.include_router(kams_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

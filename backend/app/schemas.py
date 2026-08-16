@@ -39,3 +39,25 @@ class RequestOut(BaseModel):
     device: Optional[str]
     status: str
     total: float
+    assigned_kam_id: Optional[int] = None
+
+
+class KamOut(BaseModel):
+    id: int
+    name: str
+    email: str
+
+
+class OrgKamMapOut(BaseModel):
+    org_id: int
+    org_name: str
+    kam_user_id: Optional[int] = None
+    kam_name: Optional[str] = None
+
+
+class OrgKamMapUpdate(BaseModel):
+    kam_user_id: int
+
+
+class AssignKamRequest(BaseModel):
+    kam_user_id: int
