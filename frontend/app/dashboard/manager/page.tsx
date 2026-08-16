@@ -111,7 +111,7 @@ export default function ManagerCommandCentre() {
                 <XAxis dataKey="quarter" tick={AXIS_TICK} stroke={AXIS_STROKE} />
                 <YAxis tick={AXIS_TICK} stroke={AXIS_STROKE} allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="New customers" fill="#1B7A4D" radius={BAR_RADIUS} maxBarSize={MAX_BAR_SIZE}>
+                <Bar dataKey="New customers" fill="#8DC63F" radius={BAR_RADIUS} maxBarSize={MAX_BAR_SIZE}>
                   <LabelList dataKey="New customers" position="top" style={LABEL_STYLE} />
                 </Bar>
               </BarChart>
