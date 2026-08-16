@@ -22,7 +22,7 @@ export function Header({ userName, role }: { userName?: string; role?: Role }) {
           <span className="font-display text-base font-medium text-forest-900">BD Console</span>
         </div>
         {links.length > 0 && (
-          <nav className="hidden gap-5 sm:flex" aria-label="Primary">
+          <nav className="flex flex-wrap gap-3 sm:gap-5" aria-label="Primary">
             {links.map((l) => (
               <Link
                 key={l.href}

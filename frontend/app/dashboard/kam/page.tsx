@@ -38,21 +38,27 @@ export default function KamWorkspacePage() {
         </div>
         {error && <Banner message={error} onDismiss={() => setError("")} />}
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <Card>
-            <p className="font-display text-2xl font-semibold text-forest-900">{requests.length}</p>
-            <p className="font-body text-sm text-ink-700/70">Assigned requests</p>
-          </Card>
-          <Card>
-            <p className="font-display text-2xl font-semibold text-forest-900">{orgsCovered}</p>
-            <p className="font-body text-sm text-ink-700/70">Organizations covered</p>
-          </Card>
-        </div>
+        {loading ? (
+          <p className="font-body text-sm text-ink-700/70">Loading…</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <Card>
+              <p className="font-display text-2xl font-semibold text-forest-900">{requests.length}</p>
+              <p className="font-body text-sm text-ink-700/70">Assigned requests</p>
+            </Card>
+            <Card>
+              <p className="font-display text-2xl font-semibold text-forest-900">{orgsCovered}</p>
+              <p className="font-body text-sm text-ink-700/70">Organizations covered</p>
+            </Card>
+          </div>
+        )}
 
         <section>
           <h2 className="mb-4 font-display text-base font-semibold text-forest-900">My assigned customer requests</h2>
           <Card padding="p-0">
-            {!loading && requests.length === 0 ? (
+            {loading ? (
+              <p className="p-6 font-body text-sm text-ink-700/70">Loading…</p>
+            ) : error ? null : requests.length === 0 ? (
               <EmptyState message="No customer requests assigned to you yet — the BD Manager assigns them from the inbox." />
             ) : (
               <table className="w-full text-left">

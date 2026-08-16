@@ -33,13 +33,15 @@ function Kpi({ value, label }: { value: string; label: string }) {
 export default function ManagerCommandCentre() {
   const { token, user } = useRoleGuard("BD Manager");
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!token) return;
     getDashboardMetrics(token)
       .then(setMetrics)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "We couldn't load the command centre."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "We couldn't load the command centre."))
+      .finally(() => setLoading(false));
   }, [token]);
 
   if (!token || !user) return null;
@@ -77,6 +79,10 @@ export default function ManagerCommandCentre() {
         <h1 className="font-display text-lg font-semibold text-forest-900">Business against target, by quarter</h1>
         {error && <Banner message={error} onDismiss={() => setError("")} />}
 
+        {loading ? (
+          <p className="font-body text-sm text-ink-700/70">Loading…</p>
+        ) : !metrics ? null : (
+          <>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Kpi value={`$${annualTarget}M`} label="Annual target" />
           <Kpi value={`$${expectedPipeline}M`} label="Expected pipeline" />
@@ -184,6 +190,8 @@ export default function ManagerCommandCentre() {
             </table>
           </div>
         </Card>
+          </>
+        )}
       </main>
     </>
   );

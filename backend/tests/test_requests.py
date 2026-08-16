@@ -112,3 +112,33 @@ def test_customer_request_list_still_org_scoped_with_org_name(client):
 
     resp = client.get("/requests", headers={"Authorization": f"Bearer {token}"})
     assert resp.json()[0]["org_name"] == "pfizer.com"
+
+
+def test_customer_does_not_see_suggested_kam_routing_data(client):
+    pfizer_token, pfizer_user = _login(client, "anaya@pfizer.com")
+    mgr_token, _ = _login(client, "priya@shaily.com", role="BD Manager")
+    kam_token, kam_user = _login(client, "mah@shaily.com", name="Mr. MAH", role="Key Account Manager")
+
+    # Link the org to a suggested KAM so suggested_kam_id would be non-null if leaked.
+    client.put(f"/org-kam-map/{pfizer_user['org_id']}", json={"kam_user_id": kam_user["id"]},
+               headers={"Authorization": f"Bearer {mgr_token}"})
+
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {pfizer_token}"}).json()
+    assert created["suggested_kam_id"] is None
+    assert created["suggested_kam_name"] is None
+
+    listed = client.get("/requests", headers={"Authorization": f"Bearer {pfizer_token}"}).json()
+    assert listed[0]["suggested_kam_id"] is None
+    assert listed[0]["suggested_kam_name"] is None
+
+    # But BD Manager and KAM still see routing data.
+    mgr_view = client.get("/requests", headers={"Authorization": f"Bearer {mgr_token}"}).json()
+    assert any(r["suggested_kam_id"] == kam_user["id"] for r in mgr_view)
+
+    assign_resp = client.post(f"/requests/{created['id']}/assign-kam", json={"kam_user_id": kam_user["id"]},
+                               headers={"Authorization": f"Bearer {mgr_token}"})
+    assert assign_resp.json()["suggested_kam_id"] == kam_user["id"]
+
+    kam_view = client.get("/requests", headers={"Authorization": f"Bearer {kam_token}"}).json()
+    assert kam_view[0]["suggested_kam_id"] == kam_user["id"]

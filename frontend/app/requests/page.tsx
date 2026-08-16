@@ -77,7 +77,7 @@ export default function RequestsPage() {
 
   return (
     <>
-      <Header userName={user?.name} />
+      <Header userName={user?.name} role={user?.role} />
       <main className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
         <section>
           <h1 className="mb-4 font-display text-lg font-semibold text-forest-900">New request</h1>

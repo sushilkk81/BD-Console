@@ -10,6 +10,8 @@ from app.schemas import AssignKamRequest, KamOut, OrgKamMapOut, OrgKamMapUpdate,
 router = APIRouter(tags=["kams"])
 
 INTERNAL_DOMAIN = "shaily.com"
+STATUS_MAX_LEN = 50  # matches Request.status column width (models.py)
+DETAIL_MAX_LEN = 500  # matches AuditLog.detail column width (models.py)
 
 
 def _kams(db: Session) -> list[User]:
@@ -62,8 +64,9 @@ def set_org_kam_map(
     else:
         link.kam_user_id = payload.kam_user_id
 
+    detail = f"{org.name} → {kam.name}"[:DETAIL_MAX_LEN]
     db.add(AuditLog(org_id=org_id, actor_user_id=current_user.id, action="org_kam_linked",
-                     detail=f"{org.name} → {kam.name}"))
+                     detail=detail))
     db.commit()
     return OrgKamMapOut(org_id=org.id, org_name=org.name, kam_user_id=kam.id, kam_name=kam.name)
 
@@ -82,8 +85,9 @@ def assign_kam(
 
     org = db.get(Organization, req.org_id)
     req.assigned_kam_id = kam.id
-    req.status = f"Assigned to {kam.name}"
+    req.status = f"Assigned to {kam.name}"[:STATUS_MAX_LEN]
+    detail = f"{kam.name} → {org.name if org else req.org_id} ({req.brand})"[:DETAIL_MAX_LEN]
     db.add(AuditLog(org_id=req.org_id, actor_user_id=current_user.id, action="kam_assigned",
-                     detail=f"{kam.name} → {org.name if org else req.org_id} ({req.brand})"))
+                     detail=detail))
     db.commit()
-    return serialize_requests(db, [req])[0]
+    return serialize_requests(db, [req], include_routing=True)[0]

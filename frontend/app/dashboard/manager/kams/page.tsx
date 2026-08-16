@@ -18,6 +18,7 @@ export default function KamAdminPage() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [assignPick, setAssignPick] = useState<Record<number, string>>({});
 
   function loadAll(t: string) {
@@ -28,7 +29,8 @@ export default function KamAdminPage() {
         setRequests(r);
         setAudit(a);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "We couldn't load KAM admin data."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "We couldn't load KAM admin data."))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -47,7 +49,8 @@ export default function KamAdminPage() {
 
   async function handleAssign(requestId: number) {
     if (!token) return;
-    const pick = assignPick[requestId];
+    const req = requests.find((r) => r.id === requestId);
+    const pick = assignPick[requestId] ?? (req?.suggested_kam_id ? String(req.suggested_kam_id) : "");
     if (!pick) return;
     try {
       await assignKam(token, requestId, Number(pick));
@@ -72,7 +75,9 @@ export default function KamAdminPage() {
         <section>
           <h2 className="mb-4 font-display text-base font-semibold text-forest-900">KAM roster</h2>
           <Card padding="p-0">
-            {kams.length === 0 ? (
+            {loading ? (
+              <p className="p-6 font-body text-sm text-ink-700/70">Loading…</p>
+            ) : error ? null : kams.length === 0 ? (
               <EmptyState message="No Key Account Managers have logged in yet." />
             ) : (
               <table className="w-full text-left">
@@ -98,7 +103,9 @@ export default function KamAdminPage() {
         <section>
           <h2 className="mb-4 font-display text-base font-semibold text-forest-900">Organization → KAM assignment</h2>
           <Card padding="p-0">
-            {orgLinks.length === 0 ? (
+            {loading ? (
+              <p className="p-6 font-body text-sm text-ink-700/70">Loading…</p>
+            ) : error ? null : orgLinks.length === 0 ? (
               <EmptyState message="No customer organizations yet." />
             ) : (
               <table className="w-full text-left">
@@ -133,7 +140,9 @@ export default function KamAdminPage() {
         <section>
           <h2 className="mb-4 font-display text-base font-semibold text-forest-900">Incoming customer requests — assign a KAM</h2>
           <Card padding="p-0">
-            {unassigned.length === 0 ? (
+            {loading ? (
+              <p className="p-6 font-body text-sm text-ink-700/70">Loading…</p>
+            ) : error ? null : unassigned.length === 0 ? (
               <EmptyState message="No unassigned requests right now." />
             ) : (
               <table className="w-full text-left">
@@ -181,7 +190,9 @@ export default function KamAdminPage() {
         <section>
           <h2 className="mb-4 font-display text-base font-semibold text-forest-900">Audit trail</h2>
           <Card padding="p-0">
-            {audit.length === 0 ? (
+            {loading ? (
+              <p className="p-6 font-body text-sm text-ink-700/70">Loading…</p>
+            ) : error ? null : audit.length === 0 ? (
               <EmptyState message="No activity yet — link an organization or assign a KAM to populate the trail." />
             ) : (
               <table className="w-full text-left">
