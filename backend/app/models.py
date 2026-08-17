@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import ForeignKey, JSON, Numeric, String
+from sqlalchemy import ForeignKey, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -51,6 +51,9 @@ class Request(Base):
     timeline_months: Mapped[Optional[int]] = mapped_column(nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     urgency: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    kam_cost_usd: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    kam_timeline_months: Mapped[Optional[int]] = mapped_column(nullable=True)
+    kam_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
 
     sku_rows: Mapped[list["SkuRow"]] = relationship(back_populates="request", order_by="SkuRow.id")
@@ -164,3 +167,14 @@ class ServicePricing(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class RequestMessage(Base):
+    __tablename__ = "request_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("requests.id"), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # "internal" | "customer"
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(String(2000), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)

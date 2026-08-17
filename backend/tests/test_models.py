@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import Organization, User, Request, SkuRow, ServiceSelection
+from app.models import Organization, User, Request, SkuRow, ServiceSelection, RequestMessage
 from alembic.config import Config
 from alembic import command
 
@@ -108,3 +108,34 @@ def test_request_sku_rows_and_service_selections_roundtrip():
     assert len(fetched.sku_rows) == 1
     assert fetched.sku_rows[0].strength == "1 mg"
     assert fetched.sku_rows[0].service_selections[0].threshold is True
+
+
+def test_request_kam_assessment_fields_and_message_thread_roundtrip():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    org = Organization(name="Pfizer", kind="customer", domain="pfizer.com")
+    db.add(org)
+    db.flush()
+    customer = User(org_id=org.id, email="a@pfizer.com", name="Alice", role="Customer")
+    db.add(customer)
+    db.flush()
+    req = Request(org_id=org.id, submitted_by=customer.id, brand="Ozempic", market="US",
+                   status="KAM Assessment Submitted", kam_cost_usd=125000, kam_timeline_months=6,
+                   kam_notes="Needs a new tool for the 2 mg cartridge.")
+    db.add(req)
+    db.flush()
+    db.add(RequestMessage(request_id=req.id, channel="internal", sender_user_id=customer.id,
+                           body="Please confirm the tool cost."))
+    db.commit()
+
+    fetched = db.query(Request).one()
+    assert fetched.kam_cost_usd == 125000
+    assert fetched.kam_timeline_months == 6
+    assert "2 mg" in fetched.kam_notes
+
+    msg = db.query(RequestMessage).one()
+    assert msg.channel == "internal"
+    assert msg.body == "Please confirm the tool cost."
