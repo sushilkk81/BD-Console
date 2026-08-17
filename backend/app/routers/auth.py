@@ -15,6 +15,8 @@ INTERNAL_ROLES = {"BD Manager", "Key Account Manager"}
 CUSTOMER_TITLES = {"R&D Manager", "BD Manager"}
 MESSAGE_MAX_LEN = 300  # matches Notification.message column width (models.py)
 LINK_PATH_MAX_LEN = 200  # matches Notification.link_path column width (models.py)
+NAME_MAX_LEN = 200  # matches User.name / CustomerVisit.contact_name column width (models.py)
+PHONE_MAX_LEN = 50  # matches User.phone / CustomerVisit.contact_phone column width (models.py)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -45,15 +47,15 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     user = db.query(User).filter_by(email=payload.email).first()
     if user is None:
-        user = User(org_id=org.id, email=payload.email, name=payload.name, role=role)
+        user = User(org_id=org.id, email=payload.email, name=payload.name[:NAME_MAX_LEN], role=role)
         db.add(user)
         db.flush()
     else:
-        user.name = payload.name
+        user.name = payload.name[:NAME_MAX_LEN]
         user.role = role
     if not is_internal:
         user.title = payload.title
-        user.phone = payload.phone
+        user.phone = payload.phone[:PHONE_MAX_LEN]
 
     session_id = None
     if not is_internal:

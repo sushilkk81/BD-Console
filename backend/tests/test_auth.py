@@ -96,6 +96,19 @@ def test_first_customer_login_notifies_every_bd_manager(client):
         assert "Dr. Mehta" in resp.json()[0]["message"]
 
 
+def test_login_truncates_oversized_name_and_phone(client):
+    long_name = "N" * 250
+    long_phone = "1" * 80
+    resp = client.post("/auth/login", json={
+        "name": long_name, "email": "toolong@pfizer.com",
+        "title": "R&D Manager", "phone": long_phone,
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["user"]["name"]) == 200
+    assert body["user"]["name"] == long_name[:200]
+
+
 def test_second_customer_login_does_not_notify_again(client):
     mgr_token = client.post("/auth/login", json={
         "name": "Priya", "email": "priya@shaily.com", "role": "BD Manager"}).json()["access_token"]
