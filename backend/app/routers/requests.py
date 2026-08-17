@@ -16,7 +16,6 @@ router = APIRouter(prefix="/requests", tags=["requests"])
 
 COMMENT_MAX_LEN = 2000  # matches Request.comment column width (models.py)
 URGENCY_MAX_LEN = 100  # matches Request.urgency column width (models.py)
-STATUS_MAX_LEN = 50  # matches Request.status column width (models.py)
 MESSAGE_MAX_LEN = 2000  # matches RequestMessage.body column width (models.py)
 
 
@@ -334,8 +333,7 @@ def submit_request(request_id: int, db: Session = Depends(get_db), current_user:
 def submit_kam_assessment(request_id: int, payload: KamAssessmentIn, db: Session = Depends(get_db),
                            current_user: User = Depends(require_role("Key Account Manager"))):
     req = _assigned_kam_or_404(db, request_id, current_user)
-    expected = f"Assigned to {current_user.name}"[:STATUS_MAX_LEN]
-    if req.status not in (expected, "Revision Requested"):
+    if not (req.status.startswith("Assigned to ") or req.status == "Revision Requested"):
         raise HTTPException(409, "This request isn't awaiting a KAM assessment")
 
     req.kam_cost_usd = payload.kam_cost_usd

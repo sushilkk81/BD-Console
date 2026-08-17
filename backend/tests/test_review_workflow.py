@@ -128,6 +128,28 @@ def test_kam_assessment_409_before_kam_assigned(client, seed_reference_product, 
     assert resp.status_code == 404  # not assigned to this KAM yet
 
 
+def test_kam_assessment_succeeds_when_kams_name_has_drifted(client, seed_reference_product, seed_service_pricing):
+    """Status is stamped as 'Assigned to <name-at-assignment-time>'. If the KAM's display
+    name later changes (mock login overwrites it on every login), the stored status string
+    no longer matches `f"Assigned to {current_user.name}"`. Ownership is already proven by
+    _assigned_kam_or_404, so the assessment must still succeed via the "Assigned to " prefix
+    check rather than an exact name match.
+    """
+    request_id, _, kam_token, kam_user, _ = _assigned_request(client, seed_reference_product, seed_service_pricing)
+
+    # Simulate the KAM's display name drifting between login and assessment: re-login with
+    # a different free-text name for the same email (mock login overwrites user.name).
+    kam_token, relogged_kam_user = _login(client, "mah@shaily.com", name="Mahmoud A. Hassan",
+                                           role="Key Account Manager")
+    assert relogged_kam_user["id"] == kam_user["id"]
+    assert relogged_kam_user["name"] != "Mr. MAH"
+
+    resp = client.post(f"/requests/{request_id}/kam-assessment",
+                        json={"kam_cost_usd": 125000, "kam_timeline_months": 6}, headers=_auth(kam_token))
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "KAM Assessment Submitted"
+
+
 def _assessed_request(client, seed_reference_product, seed_service_pricing):
     """Extend _assigned_request through a submitted KAM assessment."""
     request_id, customer_token, kam_token, kam_user, mgr_token = _assigned_request(
