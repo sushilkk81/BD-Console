@@ -61,6 +61,30 @@ Row-level isolation is enforced per-endpoint, not centrally: `backend/app/router
 
 KAM assignment is **org→KAM only** — routed via the `org_kam_map` table (`org_id` → `kam_user_id`), set by a BD Manager. Region-based routing was in the original Streamlit app but was dead code there (region was never actually collected) and was deliberately not ported.
 
+### Request review workflow
+
+Past `assign-kam`, a request moves through a second state machine — still one
+literal `status` string per handoff, same convention as `"Assigned to
+{kam.name}"`: `KAM Assessment Submitted` → (BD Manager) `Approved — Awaiting
+KAM Response` or `Revision Requested` (loops back for a new KAM assessment) →
+`Responded to Customer` ⇄ `Customer Query` (customer asks, KAM answers, any
+number of rounds). The KAM's `kam_cost_usd`/`kam_timeline_months`/`kam_notes`
+on `Request` are additive to the customer's own auto-computed
+`total`/`timeline_months`/`severity` from the cost & deal step — never a
+replacement.
+
+`request_messages` backs two logical threads via its `channel` column:
+`"internal"` (BD Manager ↔ KAM revision notes, invisible to the customer) and
+`"customer"` (KAM ↔ Customer, readable but not postable by the BD Manager).
+`POST /requests/{id}/messages` branches on `current_user.role` to enforce
+who can post where; `GET /requests/{id}/messages` reuses `_visible_or_404`
+(the same role-scoped read as `GET /requests/{id}`) and then filters the
+`internal` channel out for a Customer caller.
+
+No PDF "scope note" export yet — deferred pending an agreed template (see
+`docs/superpowers/specs/2026-08-17-request-review-workflow-design.md` §8);
+every field it would need already lives in a structured column.
+
 ### Backend layout (`backend/app/`)
 
 - `models.py` — SQLAlchemy models. `organizations`, `users`, `requests` (core); `org_kam_map`, `audit_log`, `dashboard_metrics` (KAM routing + dashboards, added in migration `0002`).
