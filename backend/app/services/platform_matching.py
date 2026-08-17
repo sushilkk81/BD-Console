@@ -29,6 +29,8 @@ DRIVE_ADJACENCY = {
     frozenset((DRIVE_SPRING_AI, DRIVE_SPRING_AIHV)): 0.6,
     frozenset((DRIVE_SPRING_ONE, DRIVE_SPRING_AI)): 0.5,
     frozenset((DRIVE_SPRING_ONE, DRIVE_TORSION)): 0.4,
+    frozenset((DRIVE_TORSION, DRIVE_MANUAL)): 0.2,
+    frozenset((DRIVE_SPRING_ONE, DRIVE_MANUAL)): 0.2,
 }
 
 W_ARCH, W_DRIVE, W_DOSE = 0.5, 0.3, 0.2

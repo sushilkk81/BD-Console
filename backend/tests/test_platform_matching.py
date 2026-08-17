@@ -21,10 +21,12 @@ def test_same_archetype_drive_dose_scores_close():
 
 
 def test_unrelated_drive_and_archetype_scores_divergent():
-    axiom = _platform(variant="Axiom", cls="Pen Injector", mech="Push-Pull", resolution="Fixed Dose – 80 IU", carts=["3 mL"])
-    score, band, _ = pm.mechanism_similarity(WEGOVY_RLD, axiom)
+    # Use On-Body platform with on_body drive which has no adjacency entries at all in DRIVE_ADJACENCY
+    mira = _platform(variant="Mira", cls="On-Body", mech="On-body device", resolution="Fixed Dose – 1 – 5 mL", carts=["1 mL Cartridge"])
+    score, band, _ = pm.mechanism_similarity(WEGOVY_RLD, mira)
+    # arch: auto-injector != on-body (0.0), drive: spring_single vs on_body has no adjacency entry (0.0), dose: fixed == fixed (1.0)
     assert band == "Divergent"
-    assert score == pm.W_DRIVE * 0.0 + pm.W_DOSE * 1.0  # different archetype, unrelated drive, dose matches
+    assert score == pm.W_ARCH * 0.0 + pm.W_DRIVE * 0.0 + pm.W_DOSE * 1.0
 
 
 def test_platform_max_visc_by_class():
