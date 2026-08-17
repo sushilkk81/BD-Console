@@ -37,7 +37,8 @@ def client():
 
 
 def _login(client, email="anaya@pfizer.com"):
-    resp = client.post("/auth/login", json={"name": "Anaya", "email": email})
+    resp = client.post("/auth/login", json={
+        "name": "Anaya", "email": email, "title": "R&D Manager", "phone": "+1-555-0100"})
     return resp.json()["access_token"]
 
 

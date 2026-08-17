@@ -48,7 +48,62 @@ def test_login_internal_ok(client):
 
 
 def test_login_customer_creates_org_by_domain(client):
-    resp = client.post("/auth/login", json={"name": "Dr. Mehta", "email": "anaya@pfizer.com"})
+    resp = client.post("/auth/login", json={
+        "name": "Dr. Mehta", "email": "anaya@pfizer.com",
+        "title": "R&D Manager", "phone": "+1-555-0100",
+    })
     assert resp.status_code == 200
     body = resp.json()
     assert body["user"]["role"] == "Customer"
+
+
+def test_login_customer_requires_title_and_phone(client):
+    resp = client.post("/auth/login", json={"name": "Dr. Mehta", "email": "anaya@pfizer.com"})
+    assert resp.status_code == 422
+
+
+def test_login_customer_ok_with_title_and_phone(client):
+    resp = client.post("/auth/login", json={
+        "name": "Dr. Mehta", "email": "anaya@pfizer.com",
+        "title": "R&D Manager", "phone": "+1-555-0100",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user"]["role"] == "Customer"
+    assert body["session_id"]
+
+
+def test_login_internal_has_no_session_id(client):
+    resp = client.post("/auth/login", json={"name": "Mahesh", "email": "mahesh@shaily.com", "role": "BD Manager"})
+    assert resp.json()["session_id"] is None
+
+
+def test_first_customer_login_notifies_every_bd_manager(client):
+    mgr1_token = client.post("/auth/login", json={
+        "name": "Priya", "email": "priya@shaily.com", "role": "BD Manager"}).json()["access_token"]
+    mgr2_token = client.post("/auth/login", json={
+        "name": "Rahul", "email": "rahul@shaily.com", "role": "BD Manager"}).json()["access_token"]
+
+    client.post("/auth/login", json={
+        "name": "Dr. Mehta", "email": "anaya@pfizer.com",
+        "title": "R&D Manager", "phone": "+1-555-0100",
+    })
+
+    for token in (mgr1_token, mgr2_token):
+        resp = client.get("/notifications", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert "Dr. Mehta" in resp.json()[0]["message"]
+
+
+def test_second_customer_login_does_not_notify_again(client):
+    mgr_token = client.post("/auth/login", json={
+        "name": "Priya", "email": "priya@shaily.com", "role": "BD Manager"}).json()["access_token"]
+
+    login_body = {"name": "Dr. Mehta", "email": "anaya@pfizer.com",
+                  "title": "R&D Manager", "phone": "+1-555-0100"}
+    client.post("/auth/login", json=login_body)
+    client.post("/auth/login", json=login_body)  # second login, same user
+
+    resp = client.get("/notifications", headers={"Authorization": f"Bearer {mgr_token}"})
+    assert len(resp.json()) == 1  # still just the one, from the first login

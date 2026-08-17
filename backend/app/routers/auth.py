@@ -1,8 +1,10 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Organization, User
+from app.models import CustomerVisit, Notification, Organization, User
 from app.schemas import LoginRequest, LoginResponse, UserOut
 from app.security import create_token
 
@@ -10,6 +12,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 INTERNAL_DOMAIN = "shaily.com"
 INTERNAL_ROLES = {"BD Manager", "Key Account Manager"}
+CUSTOMER_TITLES = {"R&D Manager", "BD Manager"}
+MESSAGE_MAX_LEN = 300  # matches Notification.message column width (models.py)
+LINK_PATH_MAX_LEN = 200  # matches Notification.link_path column width (models.py)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -27,6 +32,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             db.add(org)
             db.flush()
     else:
+        if payload.title not in CUSTOMER_TITLES:
+            raise HTTPException(422, f"title must be one of {sorted(CUSTOMER_TITLES)}")
+        if not payload.phone:
+            raise HTTPException(422, "phone is required")
         role = "Customer"
         org = db.query(Organization).filter_by(domain=domain).first()
         if org is None:
@@ -42,10 +51,44 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     else:
         user.name = payload.name
         user.role = role
+    if not is_internal:
+        user.title = payload.title
+        user.phone = payload.phone
+
+    session_id = None
+    if not is_internal:
+        db.flush()
+        is_first_login = db.query(CustomerVisit).filter_by(user_id=user.id).first() is None
+        session_id = str(uuid.uuid4())
+        visit = CustomerVisit(
+            user_id=user.id, org_id=org.id, session_id=session_id,
+            contact_name=user.name, contact_email=user.email,
+            contact_phone=user.phone, contact_title=user.title,
+            org_name=org.name, pages_visited=[],
+        )
+        db.add(visit)
+        db.flush()
+        if is_first_login:
+            bd_managers = (
+                db.query(User)
+                .join(Organization, User.org_id == Organization.id)
+                .filter(Organization.domain == INTERNAL_DOMAIN, User.role == "BD Manager")
+                .all()
+            )
+            message = f"{user.name} ({org.name}) logged in for the first time"[:MESSAGE_MAX_LEN]
+            link_path = f"/dashboard/manager/customers?visit={visit.id}"[:LINK_PATH_MAX_LEN]
+            for mgr in bd_managers:
+                db.add(Notification(
+                    recipient_user_id=mgr.id, org_id=org.id, customer_visit_id=visit.id,
+                    message=message, link_path=link_path,
+                ))
 
     db.commit()
     db.refresh(user)
 
     token = create_token(user.id, user.org_id, user.role)
-    return LoginResponse(access_token=token, user=UserOut(
-        id=user.id, org_id=user.org_id, name=user.name, email=user.email, role=user.role))
+    return LoginResponse(
+        access_token=token,
+        user=UserOut(id=user.id, org_id=user.org_id, name=user.name, email=user.email, role=user.role),
+        session_id=session_id,
+    )

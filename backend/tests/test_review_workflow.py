@@ -59,6 +59,9 @@ def _login(client, email, name="Test User", role=None):
     body = {"name": name, "email": email}
     if role:
         body["role"] = role
+    else:
+        body["title"] = "R&D Manager"
+        body["phone"] = "+1-555-0100"
     resp = client.post("/auth/login", json=body)
     return resp.json()["access_token"], resp.json()["user"]
 
