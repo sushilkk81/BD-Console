@@ -345,3 +345,24 @@ def submit_kam_assessment(request_id: int, payload: KamAssessmentIn, db: Session
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req, include_routing=True)
+
+
+@router.post("/{request_id}/bd-review", response_model=RequestDetailOut)
+def bd_review(request_id: int, payload: BdReviewIn, db: Session = Depends(get_db),
+              current_user: User = Depends(require_role("BD Manager"))):
+    req = db.get(Request, request_id)
+    if req is None:
+        raise HTTPException(404, "Request not found")
+    if req.status != "KAM Assessment Submitted":
+        raise HTTPException(409, "This request isn't awaiting BD Manager review")
+
+    if payload.decision == "approve":
+        req.status = "Approved — Awaiting KAM Response"
+    else:
+        db.add(RequestMessage(request_id=req.id, channel="internal", sender_user_id=current_user.id,
+                               body=payload.note[:MESSAGE_MAX_LEN]))
+        req.status = "Revision Requested"
+
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req, include_routing=True)

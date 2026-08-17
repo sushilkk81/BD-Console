@@ -126,3 +126,53 @@ def test_kam_assessment_409_before_kam_assigned(client, seed_reference_product, 
     resp = client.post(f"/requests/{created['id']}/kam-assessment",
                         json={"kam_cost_usd": 100, "kam_timeline_months": 3}, headers=_auth(kam_token))
     assert resp.status_code == 404  # not assigned to this KAM yet
+
+
+def _assessed_request(client, seed_reference_product, seed_service_pricing):
+    """Extend _assigned_request through a submitted KAM assessment."""
+    request_id, customer_token, kam_token, kam_user, mgr_token = _assigned_request(
+        client, seed_reference_product, seed_service_pricing)
+    client.post(f"/requests/{request_id}/kam-assessment",
+                json={"kam_cost_usd": 125000, "kam_timeline_months": 6, "kam_notes": "New tool required."},
+                headers=_auth(kam_token))
+    return request_id, customer_token, kam_token, kam_user, mgr_token
+
+
+def test_bd_review_requires_bd_manager_role(client, seed_reference_product, seed_service_pricing):
+    request_id, _, kam_token, _, _ = _assessed_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/bd-review", json={"decision": "approve"}, headers=_auth(kam_token))
+    assert resp.status_code == 403
+
+
+def test_bd_review_approve_advances_status(client, seed_reference_product, seed_service_pricing):
+    request_id, _, _, _, mgr_token = _assessed_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/bd-review", json={"decision": "approve"}, headers=_auth(mgr_token))
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Approved — Awaiting KAM Response"
+
+
+def test_bd_review_revise_requires_note_and_posts_internal_message(
+    client, seed_reference_product, seed_service_pricing,
+):
+    request_id, _, kam_token, _, mgr_token = _assessed_request(client, seed_reference_product, seed_service_pricing)
+
+    missing_note = client.post(f"/requests/{request_id}/bd-review", json={"decision": "revise"},
+                                headers=_auth(mgr_token))
+    assert missing_note.status_code == 422
+
+    resp = client.post(f"/requests/{request_id}/bd-review",
+                        json={"decision": "revise", "note": "Please re-check the tool cost."},
+                        headers=_auth(mgr_token))
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Revision Requested"
+
+    messages = client.get(f"/requests/{request_id}/messages", headers=_auth(kam_token)).json()
+    internal = [m for m in messages if m["channel"] == "internal"]
+    assert len(internal) == 1
+    assert internal[0]["body"] == "Please re-check the tool cost."
+
+
+def test_bd_review_409_before_assessment_submitted(client, seed_reference_product, seed_service_pricing):
+    request_id, _, _, _, mgr_token = _assigned_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/bd-review", json={"decision": "approve"}, headers=_auth(mgr_token))
+    assert resp.status_code == 409
