@@ -381,3 +381,54 @@ def respond_to_customer(request_id: int, payload: RespondToCustomerIn, db: Sessi
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req, include_routing=True)
+
+
+@router.post("/{request_id}/messages", response_model=MessageOut, status_code=201)
+def post_message(request_id: int, payload: MessageIn, db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
+    req = db.get(Request, request_id)
+    if req is None:
+        raise HTTPException(404, "Request not found")
+
+    if current_user.role == "BD Manager":
+        raise HTTPException(403, "BD Manager can view messages but not post them")
+    elif current_user.role == "Key Account Manager":
+        if req.assigned_kam_id != current_user.id:
+            raise HTTPException(404, "Request not found")
+        if payload.channel == "customer" and req.status == "Customer Query":
+            req.status = "Responded to Customer"
+    else:
+        if req.submitted_by != current_user.id:
+            raise HTTPException(404, "Request not found")
+        if payload.channel != "customer":
+            raise HTTPException(422, "Customers may only post to the customer channel")
+        if req.status not in ("Responded to Customer", "Customer Query"):
+            raise HTTPException(409, "This request isn't open for customer messages yet")
+        req.status = "Customer Query"
+
+    msg = RequestMessage(request_id=req.id, channel=payload.channel, sender_user_id=current_user.id,
+                          body=payload.body[:MESSAGE_MAX_LEN])
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return MessageOut(id=msg.id, request_id=msg.request_id, channel=msg.channel,
+                       sender_user_id=msg.sender_user_id, sender_name=current_user.name,
+                       body=msg.body, created_at=msg.created_at)
+
+
+@router.get("/{request_id}/messages", response_model=list[MessageOut])
+def list_messages(request_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(get_current_user)):
+    req, _ = _visible_or_404(db, request_id, current_user)
+    q = db.query(RequestMessage).filter(RequestMessage.request_id == req.id)
+    if current_user.role not in ("BD Manager", "Key Account Manager"):
+        q = q.filter(RequestMessage.channel == "customer")
+    msgs = q.order_by(RequestMessage.created_at).all()
+
+    sender_ids = {m.sender_user_id for m in msgs}
+    names = {u.id: u.name for u in db.query(User).filter(User.id.in_(sender_ids))} if sender_ids else {}
+    return [
+        MessageOut(id=m.id, request_id=m.request_id, channel=m.channel, sender_user_id=m.sender_user_id,
+                   sender_name=names.get(m.sender_user_id, ""), body=m.body, created_at=m.created_at)
+        for m in msgs
+    ]

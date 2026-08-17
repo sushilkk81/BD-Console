@@ -213,3 +213,79 @@ def test_respond_to_customer_409_before_approved(client, seed_reference_product,
     resp = client.post(f"/requests/{request_id}/respond-to-customer", json={"message": "hi"},
                         headers=_auth(kam_token))
     assert resp.status_code == 409
+
+
+def _responded_request(client, seed_reference_product, seed_service_pricing):
+    """Extend _approved_request through the KAM's response to the customer."""
+    request_id, customer_token, kam_token, kam_user, mgr_token = _approved_request(
+        client, seed_reference_product, seed_service_pricing)
+    client.post(f"/requests/{request_id}/respond-to-customer",
+                json={"message": "Approved — cost and timeline attached."}, headers=_auth(kam_token))
+    return request_id, customer_token, kam_token, kam_user, mgr_token
+
+
+def test_bd_manager_cannot_post_messages(client, seed_reference_product, seed_service_pricing):
+    request_id, _, _, _, mgr_token = _responded_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/messages", json={"channel": "customer", "body": "hi"},
+                        headers=_auth(mgr_token))
+    assert resp.status_code == 403
+
+
+def test_customer_can_only_post_customer_channel(client, seed_reference_product, seed_service_pricing):
+    request_id, customer_token, _, _, _ = _responded_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/messages", json={"channel": "internal", "body": "hi"},
+                        headers=_auth(customer_token))
+    assert resp.status_code == 422
+
+
+def test_customer_query_sets_status_and_kam_answer_reverts_it(client, seed_reference_product, seed_service_pricing):
+    request_id, customer_token, kam_token, _, _ = _responded_request(
+        client, seed_reference_product, seed_service_pricing)
+
+    query = client.post(f"/requests/{request_id}/messages",
+                         json={"channel": "customer", "body": "What's the tool lead time?"},
+                         headers=_auth(customer_token))
+    assert query.status_code == 201
+
+    detail = client.get(f"/requests/{request_id}", headers=_auth(customer_token)).json()
+    assert detail["status"] == "Customer Query"
+
+    answer = client.post(f"/requests/{request_id}/messages",
+                          json={"channel": "customer", "body": "4 weeks."}, headers=_auth(kam_token))
+    assert answer.status_code == 201
+
+    detail = client.get(f"/requests/{request_id}", headers=_auth(customer_token)).json()
+    assert detail["status"] == "Responded to Customer"
+
+    messages = client.get(f"/requests/{request_id}/messages", headers=_auth(customer_token)).json()
+    assert [m["body"] for m in messages] == [
+        "Approved — cost and timeline attached.", "What's the tool lead time?", "4 weeks.",
+    ]
+
+
+def test_customer_cannot_post_before_responded_to(client, seed_reference_product, seed_service_pricing):
+    request_id, customer_token, _, _, _ = _approved_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/messages", json={"channel": "customer", "body": "hi"},
+                        headers=_auth(customer_token))
+    assert resp.status_code == 409
+
+
+def test_get_messages_hides_internal_channel_from_customer(client, seed_reference_product, seed_service_pricing):
+    request_id, customer_token, kam_token, _, mgr_token = _assessed_request(
+        client, seed_reference_product, seed_service_pricing)
+    client.post(f"/requests/{request_id}/bd-review",
+                json={"decision": "revise", "note": "internal-only note"}, headers=_auth(mgr_token))
+
+    kam_view = client.get(f"/requests/{request_id}/messages", headers=_auth(kam_token)).json()
+    assert any(m["channel"] == "internal" for m in kam_view)
+
+    customer_view = client.get(f"/requests/{request_id}/messages", headers=_auth(customer_token)).json()
+    assert all(m["channel"] == "customer" for m in customer_view)
+    assert customer_view == []
+
+
+def test_get_messages_404_for_non_owner_customer(client, seed_reference_product, seed_service_pricing):
+    request_id, _, _, _, _ = _responded_request(client, seed_reference_product, seed_service_pricing)
+    other_token, _ = _login(client, "someone@othercompany.com")
+    resp = client.get(f"/requests/{request_id}/messages", headers=_auth(other_token))
+    assert resp.status_code == 404
