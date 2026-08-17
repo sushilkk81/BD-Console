@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Organization, OrgKamMap, Request, User
-from app.schemas import RequestCreate, RequestOut
+from app.models import Organization, OrgKamMap, Request, SkuRow, User
+from app.schemas import RequestCreate, RequestDetailOut, RequestOut, ServiceSelectionOut, SkuRowOut
+from app.services import reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -30,20 +31,65 @@ def serialize_requests(db: Session, reqs: list[Request], include_routing: bool =
             assigned_kam_name=kam_names.get(r.assigned_kam_id) if r.assigned_kam_id else None,
             suggested_kam_id=suggested_id,
             suggested_kam_name=kam_names.get(suggested_id) if suggested_id else None,
+            viscosity_val=float(r.viscosity_val) if r.viscosity_val is not None else None,
+            differentiated=r.differentiated,
+            chosen_option=r.chosen_option,
+            severity=r.severity,
+            timeline_months=r.timeline_months,
+            comment=r.comment,
+            urgency=r.urgency,
         ))
     return out
 
 
-@router.post("", response_model=RequestOut, status_code=201)
+def _serialize_detail(db: Session, req: Request, include_routing: bool = False) -> RequestDetailOut:
+    base = serialize_requests(db, [req], include_routing=include_routing)[0]
+    selections = [sel for row in req.sku_rows for sel in row.service_selections]
+    return RequestDetailOut(
+        **base.model_dump(),
+        sku_rows=[SkuRowOut(id=r.id, strength=r.strength, cartridge=r.cartridge, fill_ml=float(r.fill_ml))
+                  for r in req.sku_rows],
+        service_selections=[
+            ServiceSelectionOut(id=s.id, sku_row_id=s.sku_row_id, standard_dv=s.standard_dv,
+                                 threshold=s.threshold, ifu=s.ifu, human_factor=s.human_factor)
+            for s in selections
+        ],
+    )
+
+
+def _owned_request_or_404(db: Session, request_id: int, user: User) -> Request:
+    req = db.get(Request, request_id)
+    if req is None or req.submitted_by != user.id:
+        raise HTTPException(404, "Request not found")
+    return req
+
+
+def _owned_draft_or_404(db: Session, request_id: int, user: User) -> Request:
+    req = _owned_request_or_404(db, request_id, user)
+    if req.status != "Draft":
+        raise HTTPException(409, "This request is no longer a draft")
+    return req
+
+
+@router.post("", response_model=RequestDetailOut, status_code=201)
 def create_request(payload: RequestCreate, db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
     req = Request(org_id=current_user.org_id, submitted_by=current_user.id,
                    brand=payload.brand, market=payload.market, device=payload.device,
-                   total=payload.total)
+                   viscosity_val=payload.viscosity_val, differentiated=payload.differentiated,
+                   status="Draft", total=payload.total)
     db.add(req)
+    db.flush()
+
+    ref = reference_data.variants_for(db, payload.brand, payload.market)
+    default_cart = ref["cartridge"] if ref else "3 mL"
+    for strength in payload.strengths:
+        cart, fill, _ = reference_data.presentation_for(db, payload.brand, strength, payload.market, default_cart)
+        db.add(SkuRow(request_id=req.id, strength=strength, cartridge=cart, fill_ml=fill))
+
     db.commit()
     db.refresh(req)
-    return serialize_requests(db, [req], include_routing=False)[0]
+    return _serialize_detail(db, req)
 
 
 @router.get("", response_model=list[RequestOut])
@@ -60,3 +106,26 @@ def list_requests(db: Session = Depends(get_db), current_user: User = Depends(ge
         q = q.filter(Request.org_id == current_user.org_id)
     reqs = q.order_by(Request.created_at.desc()).all()
     return serialize_requests(db, reqs, include_routing=include_routing)
+
+
+def _visible_or_404(db: Session, request_id: int, user: User) -> tuple[Request, bool]:
+    """Role-scoped visibility matching list_requests; returns (request, include_routing)."""
+    req = db.get(Request, request_id)
+    if req is None:
+        raise HTTPException(404, "Request not found")
+    if user.role == "BD Manager":
+        allowed, include_routing = req.org_id != user.org_id, True
+    elif user.role == "Key Account Manager":
+        allowed, include_routing = req.assigned_kam_id == user.id, True
+    else:
+        allowed, include_routing = req.org_id == user.org_id, False
+    if not allowed:
+        raise HTTPException(404, "Request not found")
+    return req, include_routing
+
+
+@router.get("/{request_id}", response_model=RequestDetailOut)
+def get_request_detail(request_id: int, db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    req, include_routing = _visible_or_404(db, request_id, current_user)
+    return _serialize_detail(db, req, include_routing=include_routing)

@@ -33,6 +33,22 @@ def client():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def seed_reference_product(client):
+    from app.db import get_db
+    from app.models import ReferenceProduct
+    db = next(app.dependency_overrides[get_db]())
+    db.add(ReferenceProduct(
+        brand="Ozempic", molecule="Semaglutide", device="Pen Injector", dose="variable", visc="water",
+        visc_val=1.4, cartridge="3 mL", strengths=["0.25 mg", "0.5 mg", "1 mg", "2 mg"], visc_ref="ref",
+        mech_drive="torsion_spring", mech_dose="variable", mech_label="label", ob_ref="ob", ob_claims=["c"],
+        presentations={"0.25 mg": ["1.5 mL", 1.5], "0.5 mg": ["1.5 mL", 1.5], "1 mg": ["3 mL", 3.0], "2 mg": ["3 mL", 3.0]},
+        presentations_ref="pref",
+    ))
+    db.commit()
+    db.close()
+
+
 def _login(client, email, name="Test User", role=None):
     body = {"name": name, "email": email}
     if role:
@@ -142,3 +158,48 @@ def test_customer_does_not_see_suggested_kam_routing_data(client):
 
     kam_view = client.get("/requests", headers={"Authorization": f"Bearer {kam_token}"}).json()
     assert kam_view[0]["suggested_kam_id"] == kam_user["id"]
+
+
+def test_create_request_defaults_to_draft_status(client):
+    token, _ = _login(client, "anaya@pfizer.com")
+    resp = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "Draft"
+    assert resp.json()["sku_rows"] == []
+
+
+def test_create_request_with_strengths_seeds_sku_rows_from_reference_data(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    resp = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                        headers={"Authorization": f"Bearer {token}"})
+    body = resp.json()
+    assert len(body["sku_rows"]) == 1
+    assert body["sku_rows"][0] == {"id": body["sku_rows"][0]["id"], "strength": "1 mg", "cartridge": "3 mL", "fill_ml": 3.0}
+
+
+def test_get_request_detail_not_found_for_non_owner_customer(client):
+    token, _ = _login(client, "anaya@pfizer.com")
+    other_token, _ = _login(client, "someone@othercompany.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.get(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {other_token}"})
+    assert resp.status_code == 404
+
+
+def test_get_request_detail_visible_to_bd_manager_and_assigned_kam(client):
+    token, _ = _login(client, "anaya@pfizer.com")
+    mgr_token, _ = _login(client, "priya@shaily.com", role="BD Manager")
+    kam_token, kam_user = _login(client, "mah@shaily.com", name="Mr. MAH", role="Key Account Manager")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    assert client.get(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {mgr_token}"}).status_code == 200
+
+    not_assigned = client.get(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {kam_token}"})
+    assert not_assigned.status_code == 404
+
+    client.post(f"/requests/{created['id']}/assign-kam", json={"kam_user_id": kam_user["id"]},
+                headers={"Authorization": f"Bearer {mgr_token}"})
+    assigned = client.get(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {kam_token}"})
+    assert assigned.status_code == 200
