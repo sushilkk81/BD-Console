@@ -11,6 +11,8 @@ class LoginRequest(BaseModel):
     name: str
     email: EmailStr
     role: Optional[str] = None  # required when email domain is shaily.com
+    title: Optional[str] = None  # required when email domain is not shaily.com
+    phone: Optional[str] = None  # required when email domain is not shaily.com
 
 
 class UserOut(BaseModel):
@@ -25,6 +27,7 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+    session_id: Optional[str] = None
 
 
 class RequestCreate(BaseModel):
@@ -240,4 +243,30 @@ class AuditLogOut(BaseModel):
     actor_name: str
     action: str
     detail: str
+    created_at: dt.datetime
+
+
+class CustomerVisitOut(BaseModel):
+    id: int
+    org_id: int
+    org_name: str
+    contact_name: str
+    contact_email: str
+    contact_phone: str
+    contact_title: str
+    pages_visited: list[str]
+    started_at: dt.datetime
+
+
+class PageviewIn(BaseModel):
+    session_id: str
+    page: str = Field(min_length=1)
+
+
+class NotificationOut(BaseModel):
+    id: int
+    org_id: int
+    message: str
+    link_path: str
+    is_read: bool
     created_at: dt.datetime
