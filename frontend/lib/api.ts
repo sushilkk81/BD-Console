@@ -356,8 +356,9 @@ export async function recordPageview(token: string, sessionId: string, page: str
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(token) },
     body: JSON.stringify({ session_id: sessionId, page }),
+  }).catch(() => {
+    // fire-and-forget — a failed beacon must never block navigation or surface an error
   });
-  // fire-and-forget — a failed beacon must never block navigation or surface an error
 }
 
 export type CustomerVisit = {
