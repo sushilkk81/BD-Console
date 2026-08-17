@@ -1,7 +1,7 @@
 import datetime as dt
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"]
@@ -151,11 +151,50 @@ class RequestOut(BaseModel):
     timeline_months: Optional[int] = None
     comment: Optional[str] = None
     urgency: Optional[str] = None
+    kam_cost_usd: Optional[float] = None
+    kam_timeline_months: Optional[int] = None
+    kam_notes: Optional[str] = None
 
 
 class RequestDetailOut(RequestOut):
     sku_rows: list[SkuRowOut] = []
     service_selections: list[ServiceSelectionOut] = []
+
+
+class KamAssessmentIn(BaseModel):
+    kam_cost_usd: float = Field(gt=0)
+    kam_timeline_months: int = Field(gt=0)
+    kam_notes: Optional[str] = None
+
+
+class BdReviewIn(BaseModel):
+    decision: Literal["approve", "revise"]
+    note: Optional[str] = None
+
+    @model_validator(mode="after")
+    def note_required_for_revise(self):
+        if self.decision == "revise" and not self.note:
+            raise ValueError("note is required when decision is 'revise'")
+        return self
+
+
+class RespondToCustomerIn(BaseModel):
+    message: str = Field(min_length=1)
+
+
+class MessageIn(BaseModel):
+    channel: Literal["internal", "customer"]
+    body: str = Field(min_length=1)
+
+
+class MessageOut(BaseModel):
+    id: int
+    request_id: int
+    channel: str
+    sender_user_id: int
+    sender_name: str
+    body: str
+    created_at: dt.datetime
 
 
 class KamOut(BaseModel):
