@@ -97,7 +97,7 @@ export default function KamAdminPage() {
 
   return (
     <>
-      <Header userName={user.name} role={user.role} />
+      <Header userName={user.name} role={user.role} token={token ?? undefined} />
       <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">
         <h1 className="font-display text-lg font-semibold text-forest-900">Key Account Managers & query routing</h1>
         {error && <Banner message={error} onDismiss={() => setError("")} />}
