@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import Organization, User, Request
+from app.models import Organization, User, Request, SkuRow, ServiceSelection
 from alembic.config import Config
 from alembic import command
 
@@ -30,7 +30,7 @@ def test_create_org_user_request_roundtrip():
     fetched = db.query(Request).one()
     assert fetched.brand == "Ozempic"
     assert fetched.org_id == org.id
-    assert fetched.status == "Awaiting assignment"
+    assert fetched.status == "Draft"
 
 
 def test_migration_0003_seed_data(tmp_path):
@@ -79,3 +79,32 @@ def test_migration_0003_seed_data(tmp_path):
     finally:
         db.close()
         engine.dispose()
+
+
+def test_request_sku_rows_and_service_selections_roundtrip():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    org = Organization(name="Pfizer", kind="customer", domain="pfizer.com")
+    db.add(org)
+    db.flush()
+    user = User(org_id=org.id, email="a@pfizer.com", name="Alice", role="Customer")
+    db.add(user)
+    db.flush()
+    req = Request(org_id=org.id, submitted_by=user.id, brand="Ozempic", market="US", status="Draft")
+    db.add(req)
+    db.flush()
+
+    sku = SkuRow(request_id=req.id, strength="1 mg", cartridge="3 mL", fill_ml=3.0)
+    db.add(sku)
+    db.flush()
+    db.add(ServiceSelection(sku_row_id=sku.id, standard_dv=True, threshold=True))
+    db.commit()
+
+    fetched = db.query(Request).one()
+    assert fetched.status == "Draft"
+    assert len(fetched.sku_rows) == 1
+    assert fetched.sku_rows[0].strength == "1 mg"
+    assert fetched.sku_rows[0].service_selections[0].threshold is True

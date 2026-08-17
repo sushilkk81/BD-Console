@@ -69,7 +69,7 @@ def test_metrics_returns_seeded_payload_and_live_counts(client):
     body = resp.json()
     assert body["quarterly_target"] == {"Q1": 32, "Q2": 36, "Q3": 42, "Q4": 48}
     assert body["live"]["total_requests"] == 1
-    assert body["live"]["requests_by_status"] == {"Awaiting assignment": 1}
+    assert body["live"]["requests_by_status"] == {"Draft": 1}
 
 
 def test_audit_log_records_org_kam_link(client):

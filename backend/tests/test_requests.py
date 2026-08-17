@@ -47,7 +47,7 @@ def test_create_and_list_request(client):
 
     resp = client.post("/requests", json={"brand": "Ozempic", "market": "US"}, headers=headers)
     assert resp.status_code == 201
-    assert resp.json()["status"] == "Awaiting assignment"
+    assert resp.json()["status"] == "Draft"
 
     resp = client.get("/requests", headers=headers)
     assert resp.status_code == 200
