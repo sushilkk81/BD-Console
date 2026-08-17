@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createRequest, listRequests, ApiError, RequestRow } from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
 import { Button } from "@/components/Button";
@@ -20,15 +21,16 @@ const MARKETS = [
 
 export default function RequestsPage() {
   const { token, user } = useRoleGuard("Customer");
+  const router = useRouter();
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showNewForm, setShowNewForm] = useState(false);
   const [brand, setBrand] = useState("");
   const [market, setMarket] = useState("US");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [bannerError, setBannerError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [highlightId, setHighlightId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -40,35 +42,25 @@ export default function RequestsPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  function validate(): Record<string, string> {
-    const errors: Record<string, string> = {};
-    if (!brand.trim()) errors.brand = "Enter a brand.";
-    return errors;
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
     setBannerError("");
-    const errors = validate();
+    const errors: Record<string, string> = {};
+    if (!brand.trim()) errors.brand = "Enter a brand.";
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
     setSubmitting(true);
     try {
       const created = await createRequest(token, { brand, market });
-      const updated = await listRequests(token);
-      setRequests(updated);
-      setBrand("");
-      setHighlightId(created.id);
-      setTimeout(() => setHighlightId(null), 1500);
+      router.push(`/requests/${created.id}`);
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
         setFieldErrors(err.fieldErrors);
       } else {
-        setBannerError("We couldn't submit that request — try again.");
+        setBannerError("We couldn't start that request — try again.");
       }
-    } finally {
       setSubmitting(false);
     }
   }
@@ -80,36 +72,39 @@ export default function RequestsPage() {
       <Header userName={user?.name} role={user?.role} />
       <main className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
         <section>
-          <h1 className="mb-4 font-display text-lg font-semibold text-forest-900">New request</h1>
-          <Card>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end" noValidate>
-              <div className="flex-1">
-                <TextField label="Brand" name="brand" value={brand} onChange={setBrand} error={fieldErrors.brand} />
-              </div>
-              <div className="w-full sm:w-40">
-                <SelectField label="Market" name="market" value={market} onChange={setMarket} options={MARKETS} />
-              </div>
-              <Button type="submit" loading={submitting}>
-                {submitting ? "Submitting…" : "Submit request"}
-              </Button>
-            </form>
-            {bannerError && (
-              <div className="mt-4">
-                <Banner message={bannerError} onDismiss={() => setBannerError("")} />
-              </div>
-            )}
-          </Card>
-        </section>
+          <div className="mb-4 flex items-center justify-between">
+            <h1 className="font-display text-lg font-semibold text-forest-900">Your requests</h1>
+            {!showNewForm && <Button onClick={() => setShowNewForm(true)}>+ New request</Button>}
+          </div>
 
-        <section>
-          <h2 className="mb-4 font-display text-lg font-semibold text-forest-900">Your requests</h2>
+          {showNewForm && (
+            <Card className="mb-6">
+              <form onSubmit={handleCreate} className="flex flex-col gap-4 sm:flex-row sm:items-end" noValidate>
+                <div className="flex-1">
+                  <TextField label="Brand" name="brand" value={brand} onChange={setBrand} error={fieldErrors.brand} />
+                </div>
+                <div className="w-full sm:w-40">
+                  <SelectField label="Market" name="market" value={market} onChange={setMarket} options={MARKETS} />
+                </div>
+                <Button type="submit" loading={submitting}>
+                  {submitting ? "Starting…" : "Start request"}
+                </Button>
+              </form>
+              {bannerError && (
+                <div className="mt-4">
+                  <Banner message={bannerError} onDismiss={() => setBannerError("")} />
+                </div>
+              )}
+            </Card>
+          )}
+
           <Card padding="p-0">
             {loadError ? (
               <div className="p-6">
                 <Banner message={loadError} onDismiss={() => setLoadError("")} />
               </div>
             ) : !loading && requests.length === 0 ? (
-              <EmptyState message="No requests yet — submit your first one above." />
+              <EmptyState message="No requests yet — start your first one above." />
             ) : (
               <>
                 <table className="hidden w-full text-left sm:table">
@@ -119,6 +114,7 @@ export default function RequestsPage() {
                       <th className="px-4 py-3 font-medium">Brand</th>
                       <th className="px-4 py-3 font-medium">Market</th>
                       <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium" />
                     </tr>
                   </thead>
                   <tbody>
@@ -130,17 +126,17 @@ export default function RequestsPage() {
                       </>
                     ) : (
                       requests.map((r) => (
-                        <tr
-                          key={r.id}
-                          className={`border-b border-ink-700/5 transition-colors last:border-0 ${
-                            highlightId === r.id ? "bg-lime-500/10" : ""
-                          }`}
-                        >
+                        <tr key={r.id} className="border-b border-ink-700/5 last:border-0">
                           <td className="px-4 py-3 font-mono text-sm text-ink-700/70">{r.id}</td>
                           <td className="px-4 py-3 font-body text-sm text-ink-700">{r.brand}</td>
                           <td className="px-4 py-3 font-body text-sm text-ink-700">{r.market}</td>
                           <td className="px-4 py-3">
                             <StatusChip status={r.status} />
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button variant="secondary" onClick={() => router.push(`/requests/${r.id}`)}>
+                              {r.status === "Draft" ? "Continue" : "View"}
+                            </Button>
                           </td>
                         </tr>
                       ))
@@ -157,11 +153,10 @@ export default function RequestsPage() {
                     </>
                   ) : (
                     requests.map((r) => (
-                      <div
+                      <button
                         key={r.id}
-                        className={`flex flex-col gap-1.5 px-4 py-3 transition-colors ${
-                          highlightId === r.id ? "bg-lime-500/10" : ""
-                        }`}
+                        onClick={() => router.push(`/requests/${r.id}`)}
+                        className="flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors"
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-body text-sm font-medium text-ink-700">{r.brand}</span>
@@ -171,7 +166,7 @@ export default function RequestsPage() {
                           <span className="font-body text-sm text-ink-700/70">{r.market}</span>
                           <StatusChip status={r.status} />
                         </div>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
