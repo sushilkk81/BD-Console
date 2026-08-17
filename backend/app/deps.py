@@ -19,3 +19,11 @@ def get_current_user(authorization: str = Header(default=""), db: Session = Depe
     if user is None:
         raise HTTPException(401, "User no longer exists")
     return user
+
+
+def require_role(*roles: str):
+    def dependency(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in roles:
+            raise HTTPException(403, "Not permitted for this role")
+        return current_user
+    return dependency

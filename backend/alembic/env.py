@@ -8,7 +8,9 @@ from app.db import Base
 from app import models  # noqa: F401 — registers models on Base.metadata
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Use DATABASE_URL env var if set, otherwise use settings
+database_url = config.get_main_option("sqlalchemy.url") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -27,7 +29,12 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(config.get_section(config.config_ini_section, {}),
                                       prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        is_sqlite = connection.dialect.name == "sqlite"
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=is_sqlite  # Enable batch mode for SQLite
+        )
         with context.begin_transaction():
             context.run_migrations()
 
