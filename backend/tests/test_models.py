@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import Organization, User, Request, SkuRow, ServiceSelection, RequestMessage
+from app.models import Organization, User, Request, SkuRow, ServiceSelection, RequestMessage, CustomerVisit, Notification
 from alembic.config import Config
 from alembic import command
 
@@ -139,3 +139,41 @@ def test_request_kam_assessment_fields_and_message_thread_roundtrip():
     msg = db.query(RequestMessage).one()
     assert msg.channel == "internal"
     assert msg.body == "Please confirm the tool cost."
+
+
+def test_customer_visit_and_notification_roundtrip():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    org = Organization(name="Pfizer", kind="customer", domain="pfizer.com")
+    db.add(org)
+    db.flush()
+    customer = User(org_id=org.id, email="a@pfizer.com", name="Alice", role="Customer",
+                     phone="+1-555-0100", title="R&D Manager")
+    db.add(customer)
+    db.flush()
+    visit = CustomerVisit(
+        user_id=customer.id, org_id=org.id, session_id="11111111-1111-1111-1111-111111111111",
+        contact_name="Alice", contact_email="a@pfizer.com", contact_phone="+1-555-0100",
+        contact_title="R&D Manager", org_name="Pfizer", pages_visited=["/requests"],
+    )
+    db.add(visit)
+    db.flush()
+    db.add(Notification(
+        recipient_user_id=customer.id, org_id=org.id, customer_visit_id=visit.id,
+        message="Alice (Pfizer) logged in for the first time",
+        link_path="/dashboard/manager/customers?visit=1",
+    ))
+    db.commit()
+
+    fetched_user = db.query(User).one()
+    assert fetched_user.title == "R&D Manager"
+
+    fetched_visit = db.query(CustomerVisit).one()
+    assert fetched_visit.pages_visited == ["/requests"]
+
+    fetched_notification = db.query(Notification).one()
+    assert fetched_notification.is_read is False
+    assert "logged in" in fetched_notification.message
