@@ -15,7 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("requests", sa.Column("assigned_kam_id", sa.Integer, sa.ForeignKey("users.id"), nullable=True))
+    with op.batch_alter_table("requests") as batch_op:
+        batch_op.add_column(sa.Column("assigned_kam_id", sa.Integer, sa.ForeignKey("users.id", name="fk_requests_assigned_kam_id"), nullable=True))
 
     op.create_table(
         "org_kam_map",
@@ -75,4 +76,5 @@ def downgrade() -> None:
     op.drop_table("dashboard_metrics")
     op.drop_table("audit_log")
     op.drop_table("org_kam_map")
-    op.drop_column("requests", "assigned_kam_id")
+    with op.batch_alter_table("requests") as batch_op:
+        batch_op.drop_column("assigned_kam_id")
