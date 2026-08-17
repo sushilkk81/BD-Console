@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Two apps in this repo — know which one you're touching
 
 - **`backend/` + `frontend/`** — the active rebuild. FastAPI (Python) API + Next.js (React) frontend, Postgres-backed, multi-tenant. This is where new feature work happens.
-- **`app.py`, `data.py`, `_verify*.py`, `.streamlit/`, `requirements.txt` at the repo root** — the original Streamlit prototype ("Shaily DDCP Console"). It has no real backend, no database, and no real auth (an in-process dict behind `st.cache_resource`, wiped on every restart). It is being **replaced**, not maintained — see `docs/superpowers/specs/2026-08-15-org-level-rebuild-design.md` for the full rationale. Business logic here (mechanism/platform ranking, KAM routing, cost/pricing) is the reference to port from, not a place to add features.
+- **`app.py`, `data.py`, `_verify*.py`, `.streamlit/`, `requirements.txt` at the repo root** — the original Streamlit prototype ("Shaily DDCP Console"). It has no real backend, no database, and no real auth (an in-process dict behind `st.cache_resource`, wiped on every restart). It is being **replaced**, not maintained — see `docs/superpowers/org-level-rebuild-design.md` for the full rationale. Business logic here (mechanism/platform ranking, KAM routing, cost/pricing) is the reference to port from, not a place to add features.
 
 Don't add features to the Streamlit app. Don't assume `backend`/`frontend` code ports 1:1 from `app.py`/`data.py` without checking the design docs first — several past decisions deliberately dropped or reshaped pieces of the original (e.g. region-based KAM routing was intentionally *not* ported; it was dead code in the original).
 
@@ -82,7 +82,7 @@ who can post where; `GET /requests/{id}/messages` reuses `_visible_or_404`
 `internal` channel out for a Customer caller.
 
 No PDF "scope note" export yet — deferred pending an agreed template (see
-`docs/superpowers/specs/2026-08-17-request-review-workflow-design.md` §8);
+`docs/superpowers/request-review-workflow/design.md` §8);
 every field it would need already lives in a structured column.
 
 ### Backend layout (`backend/app/`)
@@ -103,7 +103,7 @@ Shared UI primitives live in `components/` (`Card`, `Button`, `TextField`, `Sele
 
 ### Docs
 
-`docs/superpowers/specs/` and `docs/superpowers/plans/` hold the design specs and implementation plans this rebuild has been built from, in date order. `2026-08-15-org-level-rebuild-design.md` is the top-level spec (goals, data model, auth strategy, and the phased build sequence the whole rebuild follows); the dated files after it are specs/plans for individual slices. Check these before assuming a feature is unbuilt or out of scope — they record what was deliberately deferred and why.
+`docs/superpowers/` holds the design specs and implementation plans this rebuild has been built from, one subfolder per slice (`foundation-slice/`, `customer-ui-design-system/`, `core-customer-flow/`, `bd-manager-kam-dashboards/`, `request-review-workflow/`, `customer-engagement-notifications/`, …), each with a `design.md` (spec) and/or `plan.md` (implementation plan). `org-level-rebuild-design.md` at the top level is the umbrella spec (goals, data model, auth strategy, and the phased build sequence the whole rebuild follows); the per-slice folders are the individual pieces of that sequence, in the order they were built. Check these before assuming a feature is unbuilt or out of scope — they record what was deliberately deferred and why.
 
 ### Infra
 

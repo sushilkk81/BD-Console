@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, psycopg2, PyJWT, pytest + httpx; Node 20, Next.js 14 (App Router), TypeScript; Docker, Docker Compose (local); Terraform (AWS provider) for ECR/RDS/ECS/ALB.
 
-**Spec:** `docs/superpowers/specs/2026-08-15-org-level-rebuild-design.md` (sections 4–6, 8 §1)
+**Spec:** `docs/superpowers/org-level-rebuild-design.md` (sections 4–6, 8 §1)
 
 ## Global Constraints
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 14.2.13 (existing), Tailwind CSS v4.3.3 + `@tailwindcss/postcss` v4.3.3 (new), `next/font/google` (bundled with Next, no new dependency) for Space Grotesk / IBM Plex Sans / IBM Plex Mono.
 
-**Spec:** `docs/superpowers/specs/2026-08-15-customer-ui-design-system.md`
+**Spec:** `docs/superpowers/customer-ui-design-system/design.md`
 
 ## Global Constraints
 
