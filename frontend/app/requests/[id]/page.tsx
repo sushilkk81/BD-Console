@@ -3,10 +3,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ApiError,
+  PlatformOptions,
   ReferenceProduct,
   RequestDetail,
+  getPlatformOptions,
   getRequestDetail,
   listReferenceProducts,
+  selectOption,
   updateRequestStep1,
 } from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
@@ -54,6 +57,11 @@ export default function RequestWizardPage() {
   const [device, setDevice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  const [options, setOptions] = useState<PlatformOptions | null>(null);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [optionsError, setOptionsError] = useState("");
+  const [selecting, setSelecting] = useState(false);
 
   useEffect(() => {
     if (!token || Number.isNaN(requestId)) return;
@@ -130,6 +138,30 @@ export default function RequestWizardPage() {
 
   async function handleContinueToOptions() {
     if (await saveStep1()) setStep("options");
+  }
+
+  useEffect(() => {
+    if (step !== "options" || !token || !detail) return;
+    setOptionsLoading(true);
+    setOptionsError("");
+    getPlatformOptions(token, requestId)
+      .then(setOptions)
+      .catch((err) => setOptionsError(err instanceof ApiError ? err.message : "We couldn't load platform options — try again."))
+      .finally(() => setOptionsLoading(false));
+  }, [step, token, detail, requestId]);
+
+  async function handleSelectOption(n: 1 | 2 | 3) {
+    if (!token) return;
+    setSelecting(true);
+    try {
+      const updated = await selectOption(token, requestId, n);
+      setDetail(updated);
+      setStep("cost");
+    } catch (err) {
+      setOptionsError(err instanceof ApiError ? err.message : "We couldn't select that option — try again.");
+    } finally {
+      setSelecting(false);
+    }
   }
 
   if (!token) return null;
@@ -370,7 +402,16 @@ export default function RequestWizardPage() {
             )}
 
             {step === "options" && detail && (
-              <PlaceholderStepOptions />
+              <StepOptions
+                options={options}
+                loading={optionsLoading}
+                error={optionsError}
+                onDismissError={() => setOptionsError("")}
+                chosenOption={detail.chosen_option}
+                isDraft={isDraft}
+                selecting={selecting}
+                onSelect={handleSelectOption}
+              />
             )}
             {step === "cost" && detail && (
               <PlaceholderStepCost />
@@ -382,8 +423,85 @@ export default function RequestWizardPage() {
   );
 }
 
-function PlaceholderStepOptions() {
-  return <Card>Step 2 lands in a later task.</Card>;
+function StepOptions({
+  options,
+  loading,
+  error,
+  onDismissError,
+  chosenOption,
+  isDraft,
+  selecting,
+  onSelect,
+}: {
+  options: PlatformOptions | null;
+  loading: boolean;
+  error: string;
+  onDismissError: () => void;
+  chosenOption: number | null;
+  isDraft: boolean;
+  selecting: boolean;
+  onSelect: (n: 1 | 2 | 3) => void;
+}) {
+  if (loading) return <Card>Loading platform options…</Card>;
+  if (error) return <Banner message={error} onDismiss={onDismissError} />;
+  if (!options) return null;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <p className="font-body text-sm text-ink-700/70">
+        Each SKU is matched to cartridge-compatible Shaily platforms and ranked by device-mechanism closeness to the
+        reference product. Three option sets are proposed — pick the one to take forward.
+      </p>
+      {([1, 2, 3] as const).map((n) => {
+        const rows = options.options[String(n) as "1" | "2" | "3"];
+        const selected = chosenOption === n;
+        return (
+          <Card key={n} className={selected ? "border-forest-600" : ""}>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full bg-sand-50 px-3 py-1 font-body text-xs font-medium text-ink-700">
+                Option {n}
+              </span>
+              {selected && <span className="font-body text-xs font-medium text-forest-600">✓ selected</span>}
+            </div>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+                  <th className="py-1.5">SKU</th>
+                  <th className="py-1.5">Platform</th>
+                  <th className="py-1.5">Type</th>
+                  <th className="py-1.5">Mechanism match</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.sku} className="border-t border-ink-700/5">
+                    <td className="py-1.5 font-body text-sm text-ink-700">{row.sku}</td>
+                    <td className="py-1.5 font-body text-sm text-ink-700">{row.platform ?? "—"}</td>
+                    <td className="py-1.5 font-body text-sm text-ink-700">
+                      {row.cls ?? "—"}
+                      {row.sub ? ` · ${row.sub}` : ""}
+                    </td>
+                    <td className="py-1.5 font-body text-sm text-ink-700">
+                      {row.band === "n/a" ? "—" : `${row.band} · ${row.pct}%`}
+                      {row.fallback ? " ⚠ fallback" : ""}
+                      {row.visc_limited ? " · visc-limited" : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {isDraft && (
+              <div className="mt-3">
+                <Button variant={selected ? "primary" : "secondary"} loading={selecting} onClick={() => onSelect(n)}>
+                  Select Option {n} →
+                </Button>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
 }
 function PlaceholderStepCost() {
   return <Card>Step 3 lands in a later task.</Card>;
