@@ -25,6 +25,9 @@ app.include_router(reference_products_router)
 from app.routers.dashboard import router as dashboard_router
 app.include_router(dashboard_router)
 
+from app.routers.notifications import router as notifications_router
+app.include_router(notifications_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
