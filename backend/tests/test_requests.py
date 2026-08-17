@@ -203,3 +203,108 @@ def test_get_request_detail_visible_to_bd_manager_and_assigned_kam(client):
                 headers={"Authorization": f"Bearer {mgr_token}"})
     assigned = client.get(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {kam_token}"})
     assert assigned.status_code == 200
+
+
+def test_put_request_step1_upserts_sku_rows_and_computes_total_fields(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": ["1 mg", "2 mg"], "viscosity_val": 1.4,
+        "device": "Pen Injector", "differentiated": False,
+        "sku_rows": [
+            {"strength": "1 mg", "cartridge": "1.5 mL", "fill_ml": 2.0},  # edited cartridge/fill, id preserved
+            {"strength": "2 mg", "cartridge": "3 mL", "fill_ml": 3.0},    # new row
+        ],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    rows_by_strength = {r["strength"]: r for r in body["sku_rows"]}
+    assert rows_by_strength["1 mg"]["id"] == created["sku_rows"][0]["id"]
+    assert rows_by_strength["1 mg"]["cartridge"] == "1.5 mL"
+    assert rows_by_strength["2 mg"]["fill_ml"] == 3.0
+
+
+def test_put_request_step1_preserves_service_selections_when_strengths_unchanged(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"}, json={
+        "selections": [{"sku_row_id": sku_id, "standard_dv": True, "threshold": True}],
+    })
+
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": ["1 mg"], "viscosity_val": 1.4,
+        "device": "Pen Injector", "differentiated": False,
+        "sku_rows": [{"strength": "1 mg", "cartridge": "1 mL PFS", "fill_ml": 0.75}],  # only cartridge/fill changed
+    })
+    body = resp.json()
+    assert body["chosen_option"] == 1  # not reset — strengths didn't change
+    assert len(body["service_selections"]) == 1
+
+
+def test_put_request_step1_cascades_reset_when_strengths_change(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"}, json={
+        "selections": [{"sku_row_id": sku_id, "standard_dv": True}],
+    })
+
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": ["2 mg"], "viscosity_val": 1.4,
+        "device": "Pen Injector", "differentiated": False,
+        "sku_rows": [{"strength": "2 mg", "cartridge": "3 mL", "fill_ml": 3.0}],
+    })
+    body = resp.json()
+    assert body["chosen_option"] is None
+    assert body["severity"] is None
+    assert body["service_selections"] == []
+
+
+def test_put_request_step1_rejects_unknown_cartridge(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": ["1 mg"], "sku_rows": [
+            {"strength": "1 mg", "cartridge": "9 mL bogus", "fill_ml": 3.0},
+        ],
+    })
+    assert resp.status_code == 422
+
+
+def test_put_request_returns_404_for_non_owner(client):
+    token, _ = _login(client, "anaya@pfizer.com")
+    other_token, _ = _login(client, "someone@othercompany.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {other_token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": [], "sku_rows": [],
+    })
+    assert resp.status_code == 404
+
+
+def test_put_request_returns_409_when_not_draft(client):
+    token, _ = _login(client, "anaya@pfizer.com")
+    mgr_token, _ = _login(client, "priya@shaily.com", role="BD Manager")
+    kam_token, kam_user = _login(client, "mah@shaily.com", name="Mr. MAH", role="Key Account Manager")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+               json={"selections": []})
+    client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "US", "strengths": [], "sku_rows": [],
+    })
+    assert resp.status_code == 409

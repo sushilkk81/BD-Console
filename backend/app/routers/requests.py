@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Organization, OrgKamMap, Request, SkuRow, User
-from app.schemas import RequestCreate, RequestDetailOut, RequestOut, ServiceSelectionOut, SkuRowOut
+from app.models import Organization, OrgKamMap, Request, ServiceSelection, SkuRow, User
+from app.schemas import RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update, ServiceSelectionOut, SkuRowOut
 from app.services import reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -129,3 +129,55 @@ def get_request_detail(request_id: int, db: Session = Depends(get_db),
                         current_user: User = Depends(get_current_user)):
     req, include_routing = _visible_or_404(db, request_id, current_user)
     return _serialize_detail(db, req, include_routing=include_routing)
+
+
+def _upsert_sku_rows(db: Session, req: Request, rows_in: list) -> bool:
+    """Upsert req.sku_rows by strength; returns True if the strength set changed.
+
+    Preserves sku_rows.id (and therefore service_selections) for any strength that's
+    still present, so an edit that only tweaks cartridge/fill_ml doesn't orphan an
+    already-priced SKU's service selections. See the plan's "implementation decisions"
+    note on reconciling the full-replace contract with the service_selections FK.
+    """
+    existing = {row.strength: row for row in req.sku_rows}
+    incoming_strengths = {r.strength for r in rows_in}
+    changed = set(existing.keys()) != incoming_strengths
+
+    for strength, row in list(existing.items()):
+        if strength not in incoming_strengths:
+            db.query(ServiceSelection).filter(ServiceSelection.sku_row_id == row.id).delete()
+            db.delete(row)
+    db.flush()
+
+    for r in rows_in:
+        row = existing.get(r.strength)
+        if row is not None and r.strength in incoming_strengths:
+            row.cartridge = r.cartridge
+            row.fill_ml = r.fill_ml
+        else:
+            db.add(SkuRow(request_id=req.id, strength=r.strength, cartridge=r.cartridge, fill_ml=r.fill_ml))
+    return changed
+
+
+@router.put("/{request_id}", response_model=RequestDetailOut)
+def update_request_step1(request_id: int, payload: RequestStep1Update, db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    req = _owned_draft_or_404(db, request_id, current_user)
+
+    rld_changed = (req.brand != payload.brand or req.market != payload.market
+                   or _upsert_sku_rows(db, req, payload.sku_rows))
+
+    req.brand = payload.brand
+    req.market = payload.market
+    req.viscosity_val = payload.viscosity_val
+    req.device = payload.device
+    req.differentiated = payload.differentiated
+
+    if rld_changed:
+        req.chosen_option = None
+        req.severity = None
+        req.timeline_months = None
+
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req)
