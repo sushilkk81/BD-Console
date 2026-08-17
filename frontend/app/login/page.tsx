@@ -10,12 +10,15 @@ import { Card } from "@/components/Card";
 import { Banner } from "@/components/Banner";
 
 const INTERNAL_ROLES = ["BD Manager", "Key Account Manager"];
+const CUSTOMER_TITLES = ["R&D Manager", "BD Manager"];
 
 export default function LoginPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
+  const [title, setTitle] = useState("");
+  const [phone, setPhone] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [bannerError, setBannerError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +30,10 @@ export default function LoginPage() {
     if (!name.trim()) errors.name = "Enter your name.";
     if (!email.trim()) errors.email = "Enter your email.";
     if (isInternal && !role) errors.role = "Select your role.";
+    if (!isInternal && email.trim()) {
+      if (!title) errors.title = "Select your role in the organization.";
+      if (!phone.trim()) errors.phone = "Enter your phone number.";
+    }
     return errors;
   }
 
@@ -39,9 +46,13 @@ export default function LoginPage() {
 
     setSubmitting(true);
     try {
-      const result = await login(name, email, isInternal ? role : undefined);
+      const result = await login(name, email, isInternal ? role : undefined, isInternal ? undefined : title,
+                                  isInternal ? undefined : phone);
       localStorage.setItem("bdconsole_token", result.access_token);
       localStorage.setItem("bdconsole_user", JSON.stringify(result.user));
+      if (result.session_id) {
+        localStorage.setItem("bdconsole_session_id", result.session_id);
+      }
       router.push(LANDING[result.user.role as keyof typeof LANDING] ?? "/requests");
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
@@ -102,6 +113,27 @@ export default function LoginPage() {
                 options={INTERNAL_ROLES.map((r) => ({ value: r, label: r }))}
                 error={fieldErrors.role}
               />
+            </div>
+          </div>
+          <div
+            className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ${
+              !isInternal && email.trim() ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            }`}
+            aria-hidden={isInternal || !email.trim()}
+            inert={isInternal || !email.trim() ? true : undefined}
+          >
+            <div className="overflow-hidden flex flex-col gap-4">
+              <SelectField
+                label="Your role in the organization"
+                name="title"
+                value={title}
+                onChange={setTitle}
+                placeholder="Select…"
+                options={CUSTOMER_TITLES.map((t) => ({ value: t, label: t }))}
+                error={fieldErrors.title}
+              />
+              <TextField label="Phone number" name="phone" type="tel" value={phone} onChange={setPhone}
+                         error={fieldErrors.phone} />
             </div>
           </div>
           {bannerError && <Banner message={bannerError} onDismiss={() => setBannerError("")} />}
