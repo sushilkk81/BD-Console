@@ -64,6 +64,19 @@ def seed_platform_sheet(client):
     db.close()
 
 
+@pytest.fixture
+def seed_service_pricing(client):
+    from app.db import get_db
+    from app.models import ServicePricing
+    db = next(app.dependency_overrides[get_db]())
+    db.add(ServicePricing(key="PKG", payload={"minor": 200, "moderate": 250, "major": 350}))
+    db.add(ServicePricing(key="ADD_DV", payload={"value": 50}))
+    db.add(ServicePricing(key="TIMELINE", payload={"minor": 3, "moderate": 6, "major": 9}))
+    db.add(ServicePricing(key="SERVICES", payload={"standard_dv": 200, "threshold": 2110, "ifu": 1110, "human_factor": 400000}))
+    db.commit()
+    db.close()
+
+
 def _login(client, email, name="Test User", role=None):
     body = {"name": name, "email": email}
     if role:
@@ -241,7 +254,9 @@ def test_put_request_step1_upserts_sku_rows_and_computes_total_fields(client, se
     assert rows_by_strength["2 mg"]["fill_ml"] == 3.0
 
 
-def test_put_request_step1_preserves_service_selections_when_strengths_unchanged(client, seed_reference_product):
+def test_put_request_step1_preserves_service_selections_when_strengths_unchanged(
+    client, seed_reference_product, seed_service_pricing,
+):
     token, _ = _login(client, "anaya@pfizer.com")
     created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
                            headers={"Authorization": f"Bearer {token}"}).json()
@@ -262,7 +277,9 @@ def test_put_request_step1_preserves_service_selections_when_strengths_unchanged
     assert len(body["service_selections"]) == 1
 
 
-def test_put_request_step1_cascades_reset_when_strengths_change(client, seed_reference_product):
+def test_put_request_step1_cascades_reset_when_strengths_change(
+    client, seed_reference_product, seed_service_pricing,
+):
     token, _ = _login(client, "anaya@pfizer.com")
     created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
                            headers={"Authorization": f"Bearer {token}"}).json()
@@ -307,17 +324,19 @@ def test_put_request_returns_404_for_non_owner(client):
     assert resp.status_code == 404
 
 
-def test_put_request_returns_409_when_not_draft(client):
+def test_put_request_returns_409_when_not_draft(client, seed_reference_product, seed_service_pricing):
     token, _ = _login(client, "anaya@pfizer.com")
     mgr_token, _ = _login(client, "priya@shaily.com", role="BD Manager")
     kam_token, kam_user = _login(client, "mah@shaily.com", name="Mr. MAH", role="Key Account Manager")
-    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
                            headers={"Authorization": f"Bearer {token}"}).json()
+    sku_id = created["sku_rows"][0]["id"]
     client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
                 headers={"Authorization": f"Bearer {token}"})
     client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
-               json={"selections": []})
-    client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+               json={"selections": [{"sku_row_id": sku_id, "standard_dv": True}]})
+    submitted = client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+    assert submitted.status_code == 200
 
     resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
         "brand": "Ozempic", "market": "US", "strengths": [], "sku_rows": [],
@@ -362,3 +381,88 @@ def test_select_option_rejects_out_of_range(client, seed_reference_product):
     resp = client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 4},
                         headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 422
+
+
+def test_update_services_computes_minor_severity_pricing(
+    client, seed_reference_product, seed_platform_sheet, seed_service_pricing,
+):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+
+    resp = client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"}, json={
+        "selections": [{"sku_row_id": sku_id, "standard_dv": True, "threshold": True}],
+        "comment": "Bracket into one DV.", "urgency": "Level 1 · call back today",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["severity"] == "minor"          # Neo (torsion-spring pen) is a Close match, not moderate/fallback
+    assert body["timeline_months"] == 3
+    assert body["total"] == 200_000 + 2110       # 1 DV package (minor lead, no extra SKUs) + 1 threshold
+    assert body["comment"] == "Bracket into one DV."
+
+
+def test_update_services_escalates_severity_for_moderate_platform(
+    client, seed_reference_product, seed_service_pricing,
+):
+    from app.db import get_db
+    from app.models import PlatformSheet
+    db = next(app.dependency_overrides[get_db]())
+    db.add(PlatformSheet(variant="Maxim (Reusable)", family="Maxim", cls="Pen Injector", sub="Reusable",
+                          resolution="Fixed Dose – 80 IU", lockout="Yes", carts=["3 mL"],
+                          mech="Pulley", color="#2F6E97", moderate=True))
+    db.commit()
+    db.close()
+
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+
+    resp = client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+                       json={"selections": [{"sku_row_id": sku_id, "standard_dv": True}]})
+    assert resp.json()["severity"] == "moderate"
+
+
+def test_update_services_409_before_option_selected(client, seed_reference_product, seed_service_pricing):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    sku_id = created["sku_rows"][0]["id"]
+    resp = client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+                       json={"selections": [{"sku_row_id": sku_id}]})
+    assert resp.status_code == 409
+
+
+def test_submit_requires_option_and_services(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 422
+
+
+def test_submit_flips_status_and_locks_further_edits(
+    client, seed_reference_product, seed_platform_sheet, seed_service_pricing,
+):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+               json={"selections": [{"sku_row_id": sku_id, "standard_dv": True}]})
+
+    resp = client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Awaiting assignment"
+
+    locked = client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+                         json={"selections": []})
+    assert locked.status_code == 409

@@ -5,12 +5,16 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Organization, OrgKamMap, PlatformSheet, Request, ServiceSelection, SkuRow, User
+from app.models import (Organization, OrgKamMap, PlatformSheet, Request, ServicePricing, ServiceSelection, SkuRow,
+                         User)
 from app.schemas import (PlatformOptionRow, PlatformOptionsOut, RequestCreate, RequestDetailOut, RequestOut,
-                          RequestStep1Update, SelectOptionRequest, ServiceSelectionOut, SkuRowOut)
+                          RequestStep1Update, SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
 from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
+
+COMMENT_MAX_LEN = 2000  # matches Request.comment column width (models.py)
+URGENCY_MAX_LEN = 100  # matches Request.urgency column width (models.py)
 
 
 def serialize_requests(db: Session, reqs: list[Request], include_routing: bool = False) -> list[RequestOut]:
@@ -240,6 +244,68 @@ def select_option(request_id: int, payload: SelectOptionRequest, db: Session = D
                    current_user: User = Depends(get_current_user)):
     req = _owned_draft_or_404(db, request_id, current_user)
     req.chosen_option = payload.chosen_option
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req)
+
+
+@router.put("/{request_id}/services", response_model=RequestDetailOut)
+def update_services(request_id: int, payload: ServicesUpdate, db: Session = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    req = _owned_draft_or_404(db, request_id, current_user)
+    if req.chosen_option is None:
+        raise HTTPException(409, "Select a platform option before configuring services")
+
+    sku_row_ids = {r.id for r in req.sku_rows}
+    for sel in payload.selections:
+        if sel.sku_row_id not in sku_row_ids:
+            raise HTTPException(422, f"sku_row_id {sel.sku_row_id} does not belong to this request")
+
+    chosen_rows = _option_tables(db, req)[req.chosen_option]
+    has_fallback = any(row.fallback for row in chosen_rows)
+    chosen_platforms = {row.platform for row in chosen_rows if row.platform}
+    moderate_variants = {
+        p.variant for p in db.query(PlatformSheet).filter(PlatformSheet.moderate.is_(True),
+                                                            PlatformSheet.variant.in_(chosen_platforms))
+    } if chosen_platforms else set()
+    severity = "moderate" if (has_fallback or moderate_variants) else "minor"
+
+    pricing = {row.key: row.payload for row in db.query(ServicePricing).all()}
+    pkg, add_dv, timeline, services_cost = (
+        pricing["PKG"], pricing["ADD_DV"]["value"], pricing["TIMELINE"], pricing["SERVICES"],
+    )
+
+    db.query(ServiceSelection).filter(ServiceSelection.sku_row_id.in_(sku_row_ids)).delete(synchronize_session=False)
+    db.flush()
+    for sel in payload.selections:
+        db.add(ServiceSelection(sku_row_id=sel.sku_row_id, standard_dv=sel.standard_dv,
+                                 threshold=sel.threshold, ifu=sel.ifu, human_factor=sel.human_factor))
+
+    n_dv = sum(1 for sel in payload.selections if sel.standard_dv)
+    lead = pkg[severity]
+    dv_usd = (lead + add_dv * max(0, n_dv - 1)) * 1000 if n_dv else 0
+    thr = sum(1 for sel in payload.selections if sel.threshold) * services_cost["threshold"]
+    ifu = sum(1 for sel in payload.selections if sel.ifu) * services_cost["ifu"]
+    hf = sum(1 for sel in payload.selections if sel.human_factor) * services_cost["human_factor"]
+
+    req.severity = severity
+    req.timeline_months = timeline[severity]
+    req.comment = payload.comment[:COMMENT_MAX_LEN] if payload.comment else payload.comment
+    req.urgency = payload.urgency[:URGENCY_MAX_LEN] if payload.urgency else payload.urgency
+    req.total = dv_usd + thr + ifu + hf
+
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req)
+
+
+@router.post("/{request_id}/submit", response_model=RequestDetailOut)
+def submit_request(request_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    req = _owned_draft_or_404(db, request_id, current_user)
+    has_selections = any(row.service_selections for row in req.sku_rows)
+    if req.chosen_option is None or not has_selections:
+        raise HTTPException(422, "Select a platform option and configure services before submitting")
+    req.status = "Awaiting assignment"
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req)
