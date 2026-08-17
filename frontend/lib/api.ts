@@ -70,6 +70,9 @@ export type RequestRow = {
   timeline_months: number | null;
   comment: string | null;
   urgency: string | null;
+  kam_cost_usd: number | null;
+  kam_timeline_months: number | null;
+  kam_notes: string | null;
 };
 export type RequestDetail = RequestRow & { sku_rows: SkuRow[]; service_selections: ServiceSelection[] };
 
@@ -271,5 +274,74 @@ export async function getDashboardMetrics(token: string): Promise<DashboardMetri
 export async function getAuditLog(token: string): Promise<AuditEntry[]> {
   const resp = await fetch(`/api/dashboard/audit-log`, { headers: authHeaders(token) });
   if (!resp.ok) throw await parseError(resp, "We couldn't load the audit trail — try again.");
+  return resp.json();
+}
+
+export type Message = {
+  id: number;
+  request_id: number;
+  channel: "internal" | "customer";
+  sender_user_id: number;
+  sender_name: string;
+  body: string;
+  created_at: string;
+};
+
+export async function submitKamAssessment(
+  token: string,
+  id: number,
+  body: { kam_cost_usd: number; kam_timeline_months: number; kam_notes?: string }
+): Promise<RequestDetail> {
+  const resp = await fetch(`/api/requests/${id}/kam-assessment`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't save that assessment — try again.");
+  return resp.json();
+}
+
+export async function bdReview(
+  token: string,
+  id: number,
+  body: { decision: "approve" | "revise"; note?: string }
+): Promise<RequestDetail> {
+  const resp = await fetch(`/api/requests/${id}/bd-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't record that review — try again.");
+  return resp.json();
+}
+
+export async function respondToCustomer(token: string, id: number, message: string): Promise<RequestDetail> {
+  const resp = await fetch(`/api/requests/${id}/respond-to-customer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ message }),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't send that response — try again.");
+  return resp.json();
+}
+
+export async function postMessage(
+  token: string,
+  id: number,
+  channel: "internal" | "customer",
+  body: string
+): Promise<Message> {
+  const resp = await fetch(`/api/requests/${id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ channel, body }),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't send that message — try again.");
+  return resp.json();
+}
+
+export async function getMessages(token: string, id: number): Promise<Message[]> {
+  const resp = await fetch(`/api/requests/${id}/messages`, { headers: authHeaders(token) });
+  if (!resp.ok) throw await parseError(resp, "We couldn't load messages — try again.");
   return resp.json();
 }
