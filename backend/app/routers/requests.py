@@ -171,8 +171,8 @@ def update_request_step1(request_id: int, payload: RequestStep1Update, db: Sessi
                           current_user: User = Depends(get_current_user)):
     req = _owned_draft_or_404(db, request_id, current_user)
 
-    rld_changed = (req.brand != payload.brand or req.market != payload.market
-                   or _upsert_sku_rows(db, req, payload.sku_rows))
+    rows_changed = _upsert_sku_rows(db, req, payload.sku_rows)
+    rld_changed = req.brand != payload.brand or req.market != payload.market or rows_changed
 
     req.brand = payload.brand
     req.market = payload.market
@@ -184,6 +184,12 @@ def update_request_step1(request_id: int, payload: RequestStep1Update, db: Sessi
         req.chosen_option = None
         req.severity = None
         req.timeline_months = None
+        req.total = 0
+        db.flush()
+        sku_row_ids = {r.id for r in req.sku_rows}
+        if sku_row_ids:
+            db.query(ServiceSelection).filter(ServiceSelection.sku_row_id.in_(sku_row_ids)).delete(
+                synchronize_session=False)
 
     db.commit()
     db.refresh(req)
@@ -204,7 +210,7 @@ def _scoring_rld(db: Session, req: Request) -> dict | None:
 def _option_tables(db: Session, req: Request) -> dict[int, list[PlatformOptionRow]]:
     """{1,2,3} -> per-SKU row at that rank, mirroring the legacy app's _option_tables."""
     rld = _scoring_rld(db, req)
-    platforms = db.query(PlatformSheet).all()
+    platforms = db.query(PlatformSheet).order_by(PlatformSheet.variant).all()
     ranked_by_sku = {
         row.strength: platform_matching.rank_platforms_for_sku(row.cartridge, rld, platforms)
         for row in req.sku_rows

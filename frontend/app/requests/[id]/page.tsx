@@ -116,13 +116,22 @@ export default function RequestWizardPage() {
     });
   }
 
-  function handleBrandChange(nextBrand: string) {
-    setBrand(nextBrand);
-    const ref = refProducts.find((p) => p.brand === nextBrand);
+  function resetForRefChange(ref: ReferenceProduct | undefined) {
     reconcileRowsForStrengths(ref ? [...ref.strengths] : []);
     setDevice(ref?.device ?? null);
     setDifferentiated(false);
     setViscosityVal("");
+  }
+
+  function handleBrandChange(nextBrand: string) {
+    setBrand(nextBrand);
+    const ref = refProducts.find((p) => p.brand === nextBrand);
+    resetForRefChange(ref);
+  }
+
+  function handleMarketChange(nextMarket: string) {
+    setMarket(nextMarket);
+    resetForRefChange(currentRef ?? undefined);
   }
 
   async function saveStep1(): Promise<boolean> {
@@ -262,8 +271,7 @@ export default function RequestWizardPage() {
           {STEPS.map((s) => (
             <button
               key={s.key}
-              disabled={!isDraft && s.key !== "form"}
-              onClick={() => isDraft && setStep(s.key)}
+              onClick={() => setStep(s.key)}
               className={`flex-1 rounded-full px-3 py-2 font-body text-sm transition-colors ${
                 step === s.key ? "bg-white font-medium text-forest-900 shadow-sm" : "text-ink-700/60"
               }`}
@@ -305,7 +313,7 @@ export default function RequestWizardPage() {
                         label="Target market"
                         name="market"
                         value={market}
-                        onChange={isDraft ? (v) => setMarket(v) : () => {}}
+                        onChange={isDraft ? handleMarketChange : () => {}}
                         options={MARKETS}
                       />
                     </div>

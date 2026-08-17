@@ -301,6 +301,47 @@ def test_put_request_step1_cascades_reset_when_strengths_change(
     assert body["service_selections"] == []
 
 
+def test_put_request_step1_brand_change_upserts_rows_and_cascades_reset(
+    client, seed_reference_product, seed_service_pricing,
+):
+    """Regression test for the short-circuited `or` that skipped _upsert_sku_rows
+    whenever brand/market differed — the submitted sku_rows must never be silently
+    discarded, and a brand/market change must cascade-reset chosen_option, severity,
+    timeline_months, total, and service_selections even when the strength set (and
+    therefore the sku_rows.id set) is unchanged.
+    """
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"}, json={
+        "selections": [{"sku_row_id": sku_id, "standard_dv": True, "threshold": True}],
+    })
+
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Wegovy", "market": "US", "strengths": ["1 mg"], "viscosity_val": 1.4,
+        "device": "Pen Injector", "differentiated": False,
+        "sku_rows": [{"strength": "1 mg", "cartridge": "1 mL PFS", "fill_ml": 0.75}],
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # The new brand's submitted sku_rows must not be silently discarded.
+    assert body["brand"] == "Wegovy"
+    assert len(body["sku_rows"]) == 1
+    assert body["sku_rows"][0]["cartridge"] == "1 mL PFS"
+    assert body["sku_rows"][0]["fill_ml"] == 0.75
+
+    # Brand change cascades a full reset, even though the strength set is unchanged.
+    assert body["chosen_option"] is None
+    assert body["severity"] is None
+    assert body["timeline_months"] is None
+    assert body["total"] == 0
+    assert body["service_selections"] == []
+
+
 def test_put_request_step1_rejects_unknown_cartridge(client, seed_reference_product):
     token, _ = _login(client, "anaya@pfizer.com")
     created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
