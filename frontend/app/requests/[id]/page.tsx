@@ -4,12 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import type { Dispatch, SetStateAction } from "react";
 import {
   ApiError,
+  Message,
   PlatformOptions,
   ReferenceProduct,
   RequestDetail,
+  getMessages,
   getPlatformOptions,
   getRequestDetail,
   listReferenceProducts,
+  postMessage,
   selectOption,
   submitRequest,
   updateRequestStep1,
@@ -22,6 +25,7 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { SelectField } from "@/components/SelectField";
 import { TextField } from "@/components/TextField";
+import { MessageThread } from "@/components/MessageThread";
 
 const MARKETS = [
   { value: "US", label: "US" },
@@ -29,6 +33,7 @@ const MARKETS = [
   { value: "Canada", label: "Canada" },
 ];
 const CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"];
+const RESPONDED_STATUSES = ["Responded to Customer", "Customer Query"];
 const STEPS = [
   { key: "form", label: "1 · Request" },
   { key: "options", label: "2 · Platform options" },
@@ -75,6 +80,7 @@ export default function RequestWizardPage() {
   const [servicesError, setServicesError] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submitBanner, setSubmitBanner] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
 
   useEffect(() => {
     if (!token || Number.isNaN(requestId)) return;
@@ -100,6 +106,14 @@ export default function RequestWizardPage() {
       })
       .finally(() => setLoading(false));
   }, [token, requestId]);
+
+  useEffect(() => {
+    if (!token || !detail || !RESPONDED_STATUSES.includes(detail.status)) {
+      setMessages([]);
+      return;
+    }
+    getMessages(token, requestId).then(setMessages).catch(() => setMessages([]));
+  }, [token, detail, requestId]);
 
   const currentRef = refProducts.find((p) => p.brand === brand) ?? null;
   const isDraft = detail?.status === "Draft";
@@ -251,6 +265,14 @@ export default function RequestWizardPage() {
     }
   }
 
+  async function handlePostQuery(body: string) {
+    if (!token) return;
+    const msg = await postMessage(token, requestId, "customer", body);
+    setMessages((prev) => [...prev, msg]);
+    const updated = await getRequestDetail(token, requestId);
+    setDetail(updated);
+  }
+
   if (!token) return null;
   if (notFound) {
     return (
@@ -292,6 +314,36 @@ export default function RequestWizardPage() {
                 message="This request has been submitted — it's read-only. Cost editing and negotiation are handled by your assigned Shaily KAM."
                 onDismiss={() => {}}
               />
+            )}
+
+            {detail && RESPONDED_STATUSES.includes(detail.status) && (
+              <Card className="flex flex-col gap-4">
+                <div>
+                  <h2 className="font-display text-base font-semibold text-forest-900">Shaily's response</h2>
+                  {(detail.kam_cost_usd != null || detail.kam_timeline_months != null) && (
+                    <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                      <div>
+                        <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">Assessed cost</dt>
+                        <dd className="font-body text-sm text-ink-700">
+                          {detail.kam_cost_usd != null ? `$${detail.kam_cost_usd.toLocaleString()}` : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">Timeline</dt>
+                        <dd className="font-body text-sm text-ink-700">
+                          {detail.kam_timeline_months != null ? `${detail.kam_timeline_months} months` : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+                <MessageThread
+                  messages={messages}
+                  emptyLabel="No messages yet."
+                  onPost={handlePostQuery}
+                  placeholder="Ask a question about this response…"
+                />
+              </Card>
             )}
 
             {step === "form" && (
