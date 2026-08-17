@@ -4,17 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user
-from app.models import (Organization, OrgKamMap, PlatformSheet, Request, ServicePricing, ServiceSelection, SkuRow,
-                         User)
-from app.schemas import (PlatformOptionRow, PlatformOptionsOut, RequestCreate, RequestDetailOut, RequestOut,
-                          RequestStep1Update, SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
+from app.deps import get_current_user, require_role
+from app.models import (Organization, OrgKamMap, PlatformSheet, Request, RequestMessage, ServicePricing,
+                         ServiceSelection, SkuRow, User)
+from app.schemas import (BdReviewIn, KamAssessmentIn, MessageIn, MessageOut, PlatformOptionRow, PlatformOptionsOut,
+                          RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update, RespondToCustomerIn,
+                          SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
 from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 COMMENT_MAX_LEN = 2000  # matches Request.comment column width (models.py)
 URGENCY_MAX_LEN = 100  # matches Request.urgency column width (models.py)
+STATUS_MAX_LEN = 50  # matches Request.status column width (models.py)
+MESSAGE_MAX_LEN = 2000  # matches RequestMessage.body column width (models.py)
 
 
 def serialize_requests(db: Session, reqs: list[Request], include_routing: bool = False) -> list[RequestOut]:
@@ -45,6 +48,9 @@ def serialize_requests(db: Session, reqs: list[Request], include_routing: bool =
             timeline_months=r.timeline_months,
             comment=r.comment,
             urgency=r.urgency,
+            kam_cost_usd=float(r.kam_cost_usd) if r.kam_cost_usd is not None else None,
+            kam_timeline_months=r.kam_timeline_months,
+            kam_notes=r.kam_notes,
         ))
     return out
 
@@ -75,6 +81,13 @@ def _owned_draft_or_404(db: Session, request_id: int, user: User) -> Request:
     req = _owned_request_or_404(db, request_id, user)
     if req.status != "Draft":
         raise HTTPException(409, "This request is no longer a draft")
+    return req
+
+
+def _assigned_kam_or_404(db: Session, request_id: int, user: User) -> Request:
+    req = db.get(Request, request_id)
+    if req is None or req.assigned_kam_id != user.id:
+        raise HTTPException(404, "Request not found")
     return req
 
 
@@ -315,3 +328,20 @@ def submit_request(request_id: int, db: Session = Depends(get_db), current_user:
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req)
+
+
+@router.post("/{request_id}/kam-assessment", response_model=RequestDetailOut)
+def submit_kam_assessment(request_id: int, payload: KamAssessmentIn, db: Session = Depends(get_db),
+                           current_user: User = Depends(require_role("Key Account Manager"))):
+    req = _assigned_kam_or_404(db, request_id, current_user)
+    expected = f"Assigned to {current_user.name}"[:STATUS_MAX_LEN]
+    if req.status not in (expected, "Revision Requested"):
+        raise HTTPException(409, "This request isn't awaiting a KAM assessment")
+
+    req.kam_cost_usd = payload.kam_cost_usd
+    req.kam_timeline_months = payload.kam_timeline_months
+    req.kam_notes = payload.kam_notes
+    req.status = "KAM Assessment Submitted"
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req, include_routing=True)
