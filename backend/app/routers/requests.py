@@ -366,3 +366,18 @@ def bd_review(request_id: int, payload: BdReviewIn, db: Session = Depends(get_db
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req, include_routing=True)
+
+
+@router.post("/{request_id}/respond-to-customer", response_model=RequestDetailOut)
+def respond_to_customer(request_id: int, payload: RespondToCustomerIn, db: Session = Depends(get_db),
+                         current_user: User = Depends(require_role("Key Account Manager"))):
+    req = _assigned_kam_or_404(db, request_id, current_user)
+    if req.status != "Approved — Awaiting KAM Response":
+        raise HTTPException(409, "This request isn't ready to respond to the customer")
+
+    db.add(RequestMessage(request_id=req.id, channel="customer", sender_user_id=current_user.id,
+                           body=payload.message[:MESSAGE_MAX_LEN]))
+    req.status = "Responded to Customer"
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req, include_routing=True)

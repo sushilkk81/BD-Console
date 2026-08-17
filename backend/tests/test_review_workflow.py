@@ -176,3 +176,40 @@ def test_bd_review_409_before_assessment_submitted(client, seed_reference_produc
     request_id, _, _, _, mgr_token = _assigned_request(client, seed_reference_product, seed_service_pricing)
     resp = client.post(f"/requests/{request_id}/bd-review", json={"decision": "approve"}, headers=_auth(mgr_token))
     assert resp.status_code == 409
+
+
+def _approved_request(client, seed_reference_product, seed_service_pricing):
+    """Extend _assessed_request through BD Manager approval."""
+    request_id, customer_token, kam_token, kam_user, mgr_token = _assessed_request(
+        client, seed_reference_product, seed_service_pricing)
+    client.post(f"/requests/{request_id}/bd-review", json={"decision": "approve"}, headers=_auth(mgr_token))
+    return request_id, customer_token, kam_token, kam_user, mgr_token
+
+
+def test_respond_to_customer_requires_assigned_kam(client, seed_reference_product, seed_service_pricing):
+    request_id, _, _, _, _ = _approved_request(client, seed_reference_product, seed_service_pricing)
+    other_kam_token, _ = _login(client, "other@shaily.com", name="Other KAM", role="Key Account Manager")
+    resp = client.post(f"/requests/{request_id}/respond-to-customer", json={"message": "All set."},
+                        headers=_auth(other_kam_token))
+    assert resp.status_code == 404
+
+
+def test_respond_to_customer_posts_message_and_advances_status(client, seed_reference_product, seed_service_pricing):
+    request_id, customer_token, kam_token, _, _ = _approved_request(
+        client, seed_reference_product, seed_service_pricing)
+
+    resp = client.post(f"/requests/{request_id}/respond-to-customer",
+                        json={"message": "Approved — cost and timeline attached."}, headers=_auth(kam_token))
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "Responded to Customer"
+
+    messages = client.get(f"/requests/{request_id}/messages", headers=_auth(customer_token)).json()
+    assert [m["body"] for m in messages] == ["Approved — cost and timeline attached."]
+    assert all(m["channel"] == "customer" for m in messages)
+
+
+def test_respond_to_customer_409_before_approved(client, seed_reference_product, seed_service_pricing):
+    request_id, _, kam_token, _, _ = _assessed_request(client, seed_reference_product, seed_service_pricing)
+    resp = client.post(f"/requests/{request_id}/respond-to-customer", json={"message": "hi"},
+                        headers=_auth(kam_token))
+    assert resp.status_code == 409
