@@ -25,6 +25,9 @@ export default function KamWorkspacePage() {
   const [notesInput, setNotesInput] = useState("");
   const [actionError, setActionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [respondingToCustomer, setRespondingToCustomer] = useState(false);
+  const [postingInternal, setPostingInternal] = useState(false);
+  const [postingCustomerFollowUp, setPostingCustomerFollowUp] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -74,22 +77,46 @@ export default function KamWorkspacePage() {
 
   async function handleRespondToCustomer(message: string) {
     if (!token || !activeId) return;
-    const updated = await respondToCustomer(token, activeId, message);
-    setActiveDetail(updated);
-    setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, status: updated.status } : r)));
+    setRespondingToCustomer(true);
+    try {
+      const updated = await respondToCustomer(token, activeId, message);
+      setActiveDetail(updated);
+      setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, status: updated.status } : r)));
+      const msgs = await getMessages(token, activeId);
+      setMessages(msgs);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "We couldn't send that response — try again.");
+    } finally {
+      setRespondingToCustomer(false);
+    }
   }
 
   async function handlePostInternal(body: string) {
     if (!token || !activeId) return;
-    const msg = await postMessage(token, activeId, "internal", body);
-    setMessages((prev) => [...prev, msg]);
+    setPostingInternal(true);
+    try {
+      const msg = await postMessage(token, activeId, "internal", body);
+      setMessages((prev) => [...prev, msg]);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "We couldn't post that note — try again.");
+    } finally {
+      setPostingInternal(false);
+    }
   }
 
   async function handlePostCustomerFollowUp(body: string) {
     if (!token || !activeId) return;
-    const msg = await postMessage(token, activeId, "customer", body);
-    setMessages((prev) => [...prev, msg]);
-    getRequestDetail(token, activeId).then(setActiveDetail).catch(() => {});
+    setPostingCustomerFollowUp(true);
+    try {
+      const msg = await postMessage(token, activeId, "customer", body);
+      setMessages((prev) => [...prev, msg]);
+      const updated = await getRequestDetail(token, activeId);
+      setActiveDetail(updated);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "We couldn't post that message — try again.");
+    } finally {
+      setPostingCustomerFollowUp(false);
+    }
   }
 
   return (
@@ -181,7 +208,7 @@ export default function KamWorkspacePage() {
               </dl>
               {actionError && <Banner message={actionError} onDismiss={() => setActionError("")} />}
 
-              {activeDetail && (active.status === `Assigned to ${user.name}` || active.status === "Revision Requested") && (
+              {activeDetail && (active.status.startsWith("Assigned to ") || active.status === "Revision Requested") && (
                 <div className="mt-6 flex flex-col gap-3 border-t border-ink-700/10 pt-6">
                   <h3 className="font-display text-sm font-semibold text-forest-900">Submit your assessment</h3>
                   {active.status === "Revision Requested" && (
@@ -222,6 +249,7 @@ export default function KamWorkspacePage() {
                     messages={[]}
                     emptyLabel="Approved — send your response to the customer."
                     onPost={handleRespondToCustomer}
+                    posting={respondingToCustomer}
                     placeholder="Cost, timeline, and any notes for the customer…"
                   />
                 </div>
@@ -234,6 +262,7 @@ export default function KamWorkspacePage() {
                     messages={messages.filter((m) => m.channel === "customer")}
                     emptyLabel="No messages yet."
                     onPost={handlePostCustomerFollowUp}
+                    posting={postingCustomerFollowUp}
                   />
                 </div>
               )}
@@ -245,6 +274,7 @@ export default function KamWorkspacePage() {
                     messages={messages.filter((m) => m.channel === "internal")}
                     emptyLabel="No internal notes yet."
                     onPost={handlePostInternal}
+                    posting={postingInternal}
                   />
                 </div>
               )}

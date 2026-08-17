@@ -81,6 +81,8 @@ export default function RequestWizardPage() {
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submitBanner, setSubmitBanner] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [queryError, setQueryError] = useState("");
+  const [postingQuery, setPostingQuery] = useState(false);
 
   useEffect(() => {
     if (!token || Number.isNaN(requestId)) return;
@@ -267,10 +269,18 @@ export default function RequestWizardPage() {
 
   async function handlePostQuery(body: string) {
     if (!token) return;
-    const msg = await postMessage(token, requestId, "customer", body);
-    setMessages((prev) => [...prev, msg]);
-    const updated = await getRequestDetail(token, requestId);
-    setDetail(updated);
+    setQueryError("");
+    setPostingQuery(true);
+    try {
+      const msg = await postMessage(token, requestId, "customer", body);
+      setMessages((prev) => [...prev, msg]);
+      const updated = await getRequestDetail(token, requestId);
+      setDetail(updated);
+    } catch (err) {
+      setQueryError(err instanceof ApiError ? err.message : "We couldn't send that message — try again.");
+    } finally {
+      setPostingQuery(false);
+    }
   }
 
   if (!token) return null;
@@ -337,10 +347,12 @@ export default function RequestWizardPage() {
                     </dl>
                   )}
                 </div>
+                {queryError && <Banner message={queryError} onDismiss={() => setQueryError("")} />}
                 <MessageThread
                   messages={messages}
                   emptyLabel="No messages yet."
                   onPost={handlePostQuery}
+                  posting={postingQuery}
                   placeholder="Ask a question about this response…"
                 />
               </Card>
