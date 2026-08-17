@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import type { Dispatch, SetStateAction } from "react";
 import {
   ApiError,
   PlatformOptions,
@@ -10,7 +11,9 @@ import {
   getRequestDetail,
   listReferenceProducts,
   selectOption,
+  submitRequest,
   updateRequestStep1,
+  updateServices,
 } from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
 import { Header } from "@/components/Header";
@@ -62,6 +65,16 @@ export default function RequestWizardPage() {
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState("");
   const [selecting, setSelecting] = useState(false);
+
+  const [serviceRows, setServiceRows] = useState<
+    Record<number, { standard_dv: boolean; threshold: boolean; ifu: boolean; human_factor: boolean }>
+  >({});
+  const [comment, setComment] = useState("");
+  const [urgency, setUrgency] = useState("Level 1 · call back today");
+  const [savingServices, setSavingServices] = useState(false);
+  const [servicesError, setServicesError] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [submitBanner, setSubmitBanner] = useState("");
 
   useEffect(() => {
     if (!token || Number.isNaN(requestId)) return;
@@ -161,6 +174,71 @@ export default function RequestWizardPage() {
       setOptionsError(err instanceof ApiError ? err.message : "We couldn't select that option — try again.");
     } finally {
       setSelecting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!detail) return;
+    const bySkuId = new Map(detail.service_selections.map((s) => [s.sku_row_id, s]));
+    const seeded: typeof serviceRows = {};
+    for (const row of detail.sku_rows) {
+      const existing = bySkuId.get(row.id);
+      seeded[row.id] = existing
+        ? { standard_dv: existing.standard_dv, threshold: existing.threshold, ifu: existing.ifu, human_factor: existing.human_factor }
+        : { standard_dv: true, threshold: false, ifu: false, human_factor: false };
+    }
+    setServiceRows(seeded);
+    setComment(detail.comment ?? "");
+    setUrgency(detail.urgency ?? "Level 1 · call back today");
+  }, [detail]);
+
+  const PRICES = { standard_dv_lead: { minor: 200, moderate: 250, major: 350 }, add_dv: 50, threshold: 2110, ifu: 1110, human_factor: 400000 };
+
+  function estimateTotal(): number {
+    if (!detail) return 0;
+    const sev = (detail.severity as "minor" | "moderate" | "major" | null) ?? "minor";
+    const rows = Object.values(serviceRows);
+    const nDv = rows.filter((r) => r.standard_dv).length;
+    const lead = PRICES.standard_dv_lead[sev];
+    const dv = nDv ? (lead + PRICES.add_dv * Math.max(0, nDv - 1)) * 1000 : 0;
+    const thr = rows.filter((r) => r.threshold).length * PRICES.threshold;
+    const ifu = rows.filter((r) => r.ifu).length * PRICES.ifu;
+    const hf = rows.filter((r) => r.human_factor).length * PRICES.human_factor;
+    return dv + thr + ifu + hf;
+  }
+
+  async function handleSaveServices(): Promise<boolean> {
+    if (!token || !detail) return false;
+    setServicesError("");
+    setSavingServices(true);
+    try {
+      const updated = await updateServices(token, requestId, {
+        selections: detail.sku_rows.map((row) => ({ sku_row_id: row.id, ...serviceRows[row.id] })),
+        comment,
+        urgency,
+      });
+      setDetail(updated);
+      return true;
+    } catch (err) {
+      setServicesError(err instanceof ApiError ? err.message : "We couldn't save your service selections — try again.");
+      return false;
+    } finally {
+      setSavingServices(false);
+    }
+  }
+
+  async function handleSubmitRequest() {
+    if (!(await handleSaveServices())) return;
+    if (!token) return;
+    setSubmittingRequest(true);
+    try {
+      await submitRequest(token, requestId);
+      setSubmitBanner("Submitted to the Shaily BD desk. The BD Manager will assign a Key Account Manager.");
+      setTimeout(() => router.push("/requests"), 1600);
+    } catch (err) {
+      setServicesError(err instanceof ApiError ? err.message : "We couldn't submit that request — try again.");
+    } finally {
+      setSubmittingRequest(false);
     }
   }
 
@@ -414,7 +492,23 @@ export default function RequestWizardPage() {
               />
             )}
             {step === "cost" && detail && (
-              <PlaceholderStepCost />
+              <StepCost
+                detail={detail}
+                serviceRows={serviceRows}
+                setServiceRows={setServiceRows}
+                comment={comment}
+                setComment={setComment}
+                urgency={urgency}
+                setUrgency={setUrgency}
+                isDraft={isDraft}
+                estimatedTotal={estimateTotal()}
+                error={servicesError}
+                onDismissError={() => setServicesError("")}
+                saving={savingServices}
+                submitting={submittingRequest}
+                submitBanner={submitBanner}
+                onSubmit={handleSubmitRequest}
+              />
             )}
           </>
         )}
@@ -503,6 +597,137 @@ function StepOptions({
     </div>
   );
 }
-function PlaceholderStepCost() {
-  return <Card>Step 3 lands in a later task.</Card>;
+function StepCost({
+  detail,
+  serviceRows,
+  setServiceRows,
+  comment,
+  setComment,
+  urgency,
+  setUrgency,
+  isDraft,
+  estimatedTotal,
+  error,
+  onDismissError,
+  saving,
+  submitting,
+  submitBanner,
+  onSubmit,
+}: {
+  detail: RequestDetail;
+  serviceRows: Record<number, { standard_dv: boolean; threshold: boolean; ifu: boolean; human_factor: boolean }>;
+  setServiceRows: Dispatch<
+    SetStateAction<Record<number, { standard_dv: boolean; threshold: boolean; ifu: boolean; human_factor: boolean }>>
+  >;
+  comment: string;
+  setComment: (v: string) => void;
+  urgency: string;
+  setUrgency: (v: string) => void;
+  isDraft: boolean;
+  estimatedTotal: number;
+  error: string;
+  onDismissError: () => void;
+  saving: boolean;
+  submitting: boolean;
+  submitBanner: string;
+  onSubmit: () => void;
+}) {
+  function toggle(skuId: number, field: "standard_dv" | "threshold" | "ifu" | "human_factor") {
+    if (!isDraft) return;
+    setServiceRows((prev) => ({ ...prev, [skuId]: { ...prev[skuId], [field]: !prev[skuId][field] } }));
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <h2 className="mb-3 font-display text-base font-semibold text-forest-900">Service selection — per SKU</h2>
+        <table className="w-full text-left">
+          <thead>
+            <tr className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+              <th className="py-1.5">SKU</th>
+              <th className="py-1.5">Standard DV</th>
+              <th className="py-1.5">Threshold</th>
+              <th className="py-1.5">IFU</th>
+              <th className="py-1.5">Human Factor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.sku_rows.map((row) => {
+              const sel = serviceRows[row.id];
+              if (!sel) return null;
+              return (
+                <tr key={row.id} className="border-t border-ink-700/5">
+                  <td className="py-1.5 font-body text-sm text-ink-700">{row.strength}</td>
+                  {(["standard_dv", "threshold", "ifu", "human_factor"] as const).map((field) => (
+                    <td key={field} className="py-1.5">
+                      <input
+                        type="checkbox"
+                        disabled={!isDraft}
+                        checked={sel[field]}
+                        onChange={() => toggle(row.id, field)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 font-display text-base font-semibold text-forest-900">Total package</h2>
+        <p className="font-mono text-2xl text-forest-900">${estimatedTotal.toLocaleString()}</p>
+        <p className="mt-1 font-body text-xs text-ink-700/70">
+          Estimate updates as you tick services; the authoritative total is saved when you continue.
+        </p>
+      </Card>
+
+      {isDraft && (
+        <Card>
+          <h2 className="mb-3 font-display text-base font-semibold text-forest-900">
+            Submit this request to the Shaily BD desk
+          </h2>
+          <div className="mb-3">
+            <label className="mb-1.5 block font-body text-sm font-medium text-ink-700" htmlFor="comment">
+              Comment for the Shaily BD desk
+            </label>
+            <textarea
+              id="comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="e.g. Bracket SKU 2–3 into one DV."
+              className="w-full rounded-lg border border-ink-700/15 px-3.5 py-2.5 font-body text-sm text-ink-700"
+              rows={3}
+            />
+          </div>
+          <div className="mb-4 w-72">
+            <SelectField
+              label="Urgency"
+              name="urgency"
+              value={urgency}
+              onChange={setUrgency}
+              options={[
+                { value: "Level 1 · call back today", label: "Level 1 · call back today" },
+                { value: "Level 2 · call back this week", label: "Level 2 · call back this week" },
+              ]}
+            />
+          </div>
+          {error && (
+            <div className="mb-4">
+              <Banner message={error} onDismiss={onDismissError} />
+            </div>
+          )}
+          {submitBanner && (
+            <div className="mb-4">
+              <Banner message={submitBanner} onDismiss={() => {}} />
+            </div>
+          )}
+          <Button onClick={onSubmit} loading={saving || submitting}>
+            {saving || submitting ? "Submitting…" : "Submit request to Shaily BD"}
+          </Button>
+        </Card>
+      )}
+    </div>
+  );
 }
