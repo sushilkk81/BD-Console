@@ -1,12 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ApiError, RequestRow, listRequests } from "@/lib/api";
+import {
+  ApiError, Message, RequestDetail, RequestRow,
+  getMessages, getRequestDetail, listRequests, postMessage, respondToCustomer, submitKamAssessment,
+} from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
 import { Card } from "@/components/Card";
 import { Header } from "@/components/Header";
 import { Banner } from "@/components/Banner";
 import { StatusChip } from "@/components/StatusChip";
 import { EmptyState } from "@/components/EmptyState";
+import { MessageThread } from "@/components/MessageThread";
 
 export default function KamWorkspacePage() {
   const { token, user } = useRoleGuard("Key Account Manager");
@@ -14,6 +18,13 @@ export default function KamWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [activeDetail, setActiveDetail] = useState<RequestDetail | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [costInput, setCostInput] = useState("");
+  const [timelineInput, setTimelineInput] = useState("");
+  const [notesInput, setNotesInput] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -23,10 +34,63 @@ export default function KamWorkspacePage() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => {
+    if (!token || activeId == null) {
+      setActiveDetail(null);
+      setMessages([]);
+      return;
+    }
+    getRequestDetail(token, activeId).then(setActiveDetail).catch(() => setActiveDetail(null));
+    getMessages(token, activeId).then(setMessages).catch(() => setMessages([]));
+  }, [token, activeId]);
+
   if (!token || !user) return null;
 
   const orgsCovered = new Set(requests.map((r) => r.org_id)).size;
   const active = requests.find((r) => r.id === activeId) ?? null;
+
+  async function handleSubmitAssessment() {
+    if (!token || !activeId) return;
+    const cost = Number(costInput);
+    const timeline = Number(timelineInput);
+    if (!cost || !timeline) {
+      setActionError("Enter a cost and a timeline before submitting the assessment.");
+      return;
+    }
+    setSubmitting(true);
+    setActionError("");
+    try {
+      const updated = await submitKamAssessment(token, activeId, {
+        kam_cost_usd: cost, kam_timeline_months: timeline, kam_notes: notesInput || undefined,
+      });
+      setActiveDetail(updated);
+      setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, status: updated.status } : r)));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "We couldn't save that assessment.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRespondToCustomer(message: string) {
+    if (!token || !activeId) return;
+    const updated = await respondToCustomer(token, activeId, message);
+    setActiveDetail(updated);
+    setRequests((prev) => prev.map((r) => (r.id === updated.id ? { ...r, status: updated.status } : r)));
+  }
+
+  async function handlePostInternal(body: string) {
+    if (!token || !activeId) return;
+    const msg = await postMessage(token, activeId, "internal", body);
+    setMessages((prev) => [...prev, msg]);
+  }
+
+  async function handlePostCustomerFollowUp(body: string) {
+    if (!token || !activeId) return;
+    const msg = await postMessage(token, activeId, "customer", body);
+    setMessages((prev) => [...prev, msg]);
+    getRequestDetail(token, activeId).then(setActiveDetail).catch(() => {});
+  }
 
   return (
     <>
@@ -115,9 +179,75 @@ export default function KamWorkspacePage() {
                   <dd><StatusChip status={active.status} /></dd>
                 </div>
               </dl>
-              <p className="mt-4 font-body text-xs text-ink-700/50">
-                Full SKU, budget, and deliverable-schedule detail isn't ported yet.
-              </p>
+              {actionError && <Banner message={actionError} onDismiss={() => setActionError("")} />}
+
+              {activeDetail && (active.status === `Assigned to ${user.name}` || active.status === "Revision Requested") && (
+                <div className="mt-6 flex flex-col gap-3 border-t border-ink-700/10 pt-6">
+                  <h3 className="font-display text-sm font-semibold text-forest-900">Submit your assessment</h3>
+                  {active.status === "Revision Requested" && (
+                    <p className="font-body text-xs text-orange-700">
+                      The BD Manager sent this back for revision — see the internal notes below.
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="number" placeholder="Cost (USD)" value={costInput}
+                      onChange={(e) => setCostInput(e.target.value)}
+                      className="w-full rounded-lg border border-ink-700/15 px-3.5 py-2.5 font-body text-sm text-ink-700 sm:w-40"
+                    />
+                    <input
+                      type="number" placeholder="Timeline (months)" value={timelineInput}
+                      onChange={(e) => setTimelineInput(e.target.value)}
+                      className="w-full rounded-lg border border-ink-700/15 px-3.5 py-2.5 font-body text-sm text-ink-700 sm:w-40"
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Notes for the BD Manager" value={notesInput} rows={2}
+                    onChange={(e) => setNotesInput(e.target.value)}
+                    className="w-full rounded-lg border border-ink-700/15 px-3.5 py-2.5 font-body text-sm text-ink-700"
+                  />
+                  <button
+                    type="button" onClick={handleSubmitAssessment} disabled={submitting}
+                    className="self-start rounded-lg border border-forest-600 px-3 py-2 font-body text-sm text-forest-600 hover:bg-sand-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Submit assessment
+                  </button>
+                </div>
+              )}
+
+              {activeDetail && active.status === "Approved — Awaiting KAM Response" && (
+                <div className="mt-6 flex flex-col gap-3 border-t border-ink-700/10 pt-6">
+                  <h3 className="font-display text-sm font-semibold text-forest-900">Respond to the customer</h3>
+                  <MessageThread
+                    messages={[]}
+                    emptyLabel="Approved — send your response to the customer."
+                    onPost={handleRespondToCustomer}
+                    placeholder="Cost, timeline, and any notes for the customer…"
+                  />
+                </div>
+              )}
+
+              {activeDetail && (active.status === "Responded to Customer" || active.status === "Customer Query") && (
+                <div className="mt-6 flex flex-col gap-3 border-t border-ink-700/10 pt-6">
+                  <h3 className="font-display text-sm font-semibold text-forest-900">Customer conversation</h3>
+                  <MessageThread
+                    messages={messages.filter((m) => m.channel === "customer")}
+                    emptyLabel="No messages yet."
+                    onPost={handlePostCustomerFollowUp}
+                  />
+                </div>
+              )}
+
+              {activeDetail && (
+                <div className="mt-6 flex flex-col gap-3 border-t border-ink-700/10 pt-6">
+                  <h3 className="font-display text-sm font-semibold text-forest-900">Internal notes (BD Manager)</h3>
+                  <MessageThread
+                    messages={messages.filter((m) => m.channel === "internal")}
+                    emptyLabel="No internal notes yet."
+                    onPost={handlePostInternal}
+                  />
+                </div>
+              )}
             </Card>
           </section>
         )}
