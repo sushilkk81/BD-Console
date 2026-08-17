@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import Organization, OrgKamMap, Request, ServiceSelection, SkuRow, User
-from app.schemas import RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update, ServiceSelectionOut, SkuRowOut
-from app.services import reference_data
+from app.models import Organization, OrgKamMap, PlatformSheet, Request, ServiceSelection, SkuRow, User
+from app.schemas import (PlatformOptionRow, PlatformOptionsOut, RequestCreate, RequestDetailOut, RequestOut,
+                          RequestStep1Update, SelectOptionRequest, ServiceSelectionOut, SkuRowOut)
+from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -178,6 +181,65 @@ def update_request_step1(request_id: int, payload: RequestStep1Update, db: Sessi
         req.severity = None
         req.timeline_months = None
 
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req)
+
+
+def _scoring_rld(db: Session, req: Request) -> dict | None:
+    """Market-effective RLD profile, honouring a differentiated-device override."""
+    rld = reference_data.variants_for(db, req.brand, req.market)
+    if rld is None:
+        return None
+    if req.differentiated and req.device:
+        rld = dict(rld)
+        rld["device"] = req.device
+    return rld
+
+
+def _option_tables(db: Session, req: Request) -> dict[int, list[PlatformOptionRow]]:
+    """{1,2,3} -> per-SKU row at that rank, mirroring the legacy app's _option_tables."""
+    rld = _scoring_rld(db, req)
+    platforms = db.query(PlatformSheet).all()
+    ranked_by_sku = {
+        row.strength: platform_matching.rank_platforms_for_sku(row.cartridge, rld, platforms)
+        for row in req.sku_rows
+    }
+    tables: dict[int, list[PlatformOptionRow]] = {1: [], 2: [], 3: []}
+    for opt in range(3):
+        for row in req.sku_rows:
+            ranked = ranked_by_sku[row.strength]
+            item = ranked[opt] if opt < len(ranked) else None
+            p = item["platform"] if item else None
+            tables[opt + 1].append(PlatformOptionRow(
+                sku=row.strength, cartridge=row.cartridge,
+                platform=p.variant if p else None,
+                cls=p.cls if p else None, sub=(p.sub or None) if p else None,
+                resolution=p.resolution if p else None, lockout=p.lockout if p else None,
+                mech=p.mech if p else None,
+                band=item["band"] if item else "n/a",
+                pct=item["pct"] if item else None,
+                fallback=bool(item and item["fallback"]),
+                visc_limited=bool(item and item["visc_limited"]),
+            ))
+    return tables
+
+
+@router.get("/{request_id}/platform-options", response_model=PlatformOptionsOut)
+def get_platform_options(request_id: int, db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    req = _owned_request_or_404(db, request_id, current_user)
+    if not req.sku_rows:
+        raise HTTPException(422, "Add at least one SKU on step 1 before viewing platform options")
+    tables = _option_tables(db, req)
+    return PlatformOptionsOut(options={str(k): v for k, v in tables.items()})
+
+
+@router.post("/{request_id}/select-option", response_model=RequestDetailOut)
+def select_option(request_id: int, payload: SelectOptionRequest, db: Session = Depends(get_db),
+                   current_user: User = Depends(get_current_user)):
+    req = _owned_draft_or_404(db, request_id, current_user)
+    req.chosen_option = payload.chosen_option
     db.commit()
     db.refresh(req)
     return _serialize_detail(db, req)

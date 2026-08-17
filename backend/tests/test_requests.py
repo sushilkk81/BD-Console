@@ -49,6 +49,21 @@ def seed_reference_product(client):
     db.close()
 
 
+@pytest.fixture
+def seed_platform_sheet(client):
+    from app.db import get_db
+    from app.models import PlatformSheet
+    db = next(app.dependency_overrides[get_db]())
+    db.add(PlatformSheet(variant="Neo (3 mL)", family="Neo", cls="Pen Injector", sub="Disposable",
+                          resolution="Fixed Dose – 80 IU", lockout="Yes", carts=["3 mL"],
+                          mech="Torsion Spring", color="#7DB343", moderate=False))
+    db.add(PlatformSheet(variant="Axiom", family="Axiom", cls="Pen Injector", sub="Disposable",
+                          resolution="Fixed Dose – 80 IU", lockout="Yes", carts=["3 mL"],
+                          mech="Push-Pull", color="#8FBF52", moderate=False))
+    db.commit()
+    db.close()
+
+
 def _login(client, email, name="Test User", role=None):
     body = {"name": name, "email": email}
     if role:
@@ -308,3 +323,42 @@ def test_put_request_returns_409_when_not_draft(client):
         "brand": "Ozempic", "market": "US", "strengths": [], "sku_rows": [],
     })
     assert resp.status_code == 409
+
+
+def test_get_platform_options_ranks_by_mechanism_closeness(client, seed_reference_product, seed_platform_sheet):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    resp = client.get(f"/requests/{created['id']}/platform-options", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    options = resp.json()["options"]
+    assert options["1"][0]["platform"] == "Neo (3 mL)"  # torsion-spring pen closest to Ozempic's RLD
+    assert options["1"][0]["band"] == "Close"
+
+
+def test_get_platform_options_422_without_sku_rows(client, seed_reference_product, seed_platform_sheet):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.get(f"/requests/{created['id']}/platform-options", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 422
+
+
+def test_select_option_persists_choice(client, seed_reference_product, seed_platform_sheet):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 2},
+                        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    assert resp.json()["chosen_option"] == 2
+
+
+def test_select_option_rejects_out_of_range(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    resp = client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 4},
+                        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 422
