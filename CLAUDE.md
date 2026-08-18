@@ -85,6 +85,24 @@ No PDF "scope note" export yet — deferred pending an agreed template (see
 `docs/superpowers/request-review-workflow/design.md` §8);
 every field it would need already lives in a structured column.
 
+### Customer engagement tracking & notifications
+
+Every customer login (`POST /auth/login`, non-`@shaily.com` domains) now
+requires a `title` (their role in the organization — `R&D Manager` or
+`BD Manager`, metadata only, unrelated to the app's own `role` field) and a
+`phone` number, and writes one `customer_visits` row snapshotting the
+contact's name/email/phone/title/org at that moment, plus the distinct
+pages they visit that session (`POST /activity/pageview`, Customer-only,
+correlated by a `session_id` issued at login). A customer's **first-ever**
+login additionally fans out one `notifications` row per current `BD
+Manager` user — repeat logins by the same customer keep extending the
+visit log but don't notify again. `GET /notifications` and
+`GET /customer-visits` (both BD-Manager-only) power the bell icon in
+`Header` and the `/dashboard/manager/customers` engagement-log page,
+respectively. KAM assignment itself is unchanged — a BD Manager still uses
+`org_kam_map` (see above) to assign or reassign a KAM once they've seen
+the notification.
+
 ### Backend layout (`backend/app/`)
 
 - `models.py` — SQLAlchemy models. `organizations`, `users`, `requests` (core); `org_kam_map`, `audit_log`, `dashboard_metrics` (KAM routing + dashboards, added in migration `0002`).
