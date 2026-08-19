@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI + SQLAlchemy 2.0 + Alembic + pytest (backend, unchanged); Next.js 14 App Router + TypeScript + Tailwind v4 (frontend, unchanged) + Recharts (new frontend dependency, for the command centre charts).
 
-**Spec:** `docs/superpowers/specs/2026-08-16-bd-manager-kam-dashboards-design.md`
+**Spec:** `docs/superpowers/bd-manager-kam-dashboards/design.md`
 
 ## Global Constraints
 

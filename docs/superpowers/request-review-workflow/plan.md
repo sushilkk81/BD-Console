@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI, SQLAlchemy, Alembic, pytest (backend); Next.js App Router, React, Tailwind (frontend). No new dependencies.
 
-**Spec:** [`docs/superpowers/specs/2026-08-17-request-review-workflow-design.md`](../specs/2026-08-17-request-review-workflow-design.md)
+**Spec:** [`docs/superpowers/request-review-workflow/design.md`](design.md)
 
 ## Global Constraints
 
@@ -1602,7 +1602,7 @@ who can post where; `GET /requests/{id}/messages` reuses `_visible_or_404`
 `internal` channel out for a Customer caller.
 
 No PDF "scope note" export yet — deferred pending an agreed template (see
-`docs/superpowers/specs/2026-08-17-request-review-workflow-design.md` §8);
+`docs/superpowers/request-review-workflow/design.md` §8);
 every field it would need already lives in a structured column.
 ```
 

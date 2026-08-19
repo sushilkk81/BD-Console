@@ -287,7 +287,7 @@ export default function RequestWizardPage() {
   if (notFound) {
     return (
       <>
-        <Header userName={user?.name} role={user?.role} />
+        <Header userName={user?.name} role={user?.role} token={token ?? undefined} />
         <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
           <Banner message="That request doesn't exist or isn't yours." onDismiss={() => router.push("/requests")} />
         </main>
@@ -297,7 +297,7 @@ export default function RequestWizardPage() {
 
   return (
     <>
-      <Header userName={user?.name} role={user?.role} />
+      <Header userName={user?.name} role={user?.role} token={token ?? undefined} />
       <main className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
         <nav className="flex gap-2 rounded-full bg-sand-50 p-1" aria-label="Wizard steps">
           {STEPS.map((s) => (

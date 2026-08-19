@@ -27,6 +27,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
 
     organization: Mapped["Organization"] = relationship(back_populates="users")
@@ -177,4 +178,33 @@ class RequestMessage(Base):
     channel: Mapped[str] = mapped_column(String(20), nullable=False)  # "internal" | "customer"
     sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     body: Mapped[str] = mapped_column(String(2000), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
+
+
+class CustomerVisit(Base):
+    __tablename__ = "customer_visits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    contact_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    contact_title: Mapped[str] = mapped_column(String(50), nullable=False)
+    org_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    pages_visited: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    started_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipient_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    customer_visit_id: Mapped[int] = mapped_column(ForeignKey("customer_visits.id"), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    link_path: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_read: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)

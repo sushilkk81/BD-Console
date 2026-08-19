@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import { PageviewBeacon } from "@/components/PageviewBeacon";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -31,7 +32,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${spaceGrotesk.variable} ${plexSans.variable} ${plexMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <PageviewBeacon />
+        {children}
+      </body>
     </html>
   );
 }

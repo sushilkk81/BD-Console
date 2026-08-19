@@ -8,7 +8,7 @@
 
 **Tech Stack:** FastAPI, SQLAlchemy, Alembic, pytest (backend); Next.js App Router, React, Tailwind (frontend). No new dependencies.
 
-**Spec:** [`docs/superpowers/specs/2026-08-16-core-customer-flow-design.md`](../specs/2026-08-16-core-customer-flow-design.md)
+**Spec:** [`docs/superpowers/core-customer-flow/design.md`](design.md)
 
 ## Global Constraints
 

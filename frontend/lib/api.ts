@@ -29,16 +29,21 @@ async function parseError(resp: Response, fallback: string): Promise<ApiError> {
   return new ApiError(resp.status, fallback);
 }
 
-export async function login(name: string, email: string, role?: string) {
+export async function login(name: string, email: string, role?: string, title?: string, phone?: string) {
   const resp = await fetch(`/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email, role }),
+    body: JSON.stringify({ name, email, role, title, phone }),
   });
   if (!resp.ok) {
     throw await parseError(resp, "We couldn't sign you in — check your name and email and try again.");
   }
-  return resp.json();
+  return resp.json() as Promise<{
+    access_token: string;
+    token_type: string;
+    user: { id: number; org_id: number; name: string; email: string; role: string };
+    session_id: string | null;
+  }>;
 }
 
 export type SkuRow = { id: number; strength: string; cartridge: string; fill_ml: number };
@@ -343,5 +348,57 @@ export async function postMessage(
 export async function getMessages(token: string, id: number): Promise<Message[]> {
   const resp = await fetch(`/api/requests/${id}/messages`, { headers: authHeaders(token) });
   if (!resp.ok) throw await parseError(resp, "We couldn't load messages — try again.");
+  return resp.json();
+}
+
+export async function recordPageview(token: string, sessionId: string, page: string): Promise<void> {
+  await fetch(`/api/activity/pageview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ session_id: sessionId, page }),
+  }).catch(() => {
+    // fire-and-forget — a failed beacon must never block navigation or surface an error
+  });
+}
+
+export type CustomerVisit = {
+  id: number;
+  org_id: number;
+  org_name: string;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string;
+  contact_title: string;
+  pages_visited: string[];
+  started_at: string;
+};
+
+export async function listCustomerVisits(token: string): Promise<CustomerVisit[]> {
+  const resp = await fetch(`/api/customer-visits`, { headers: authHeaders(token) });
+  if (!resp.ok) throw await parseError(resp, "We couldn't load the customer engagement log — try again.");
+  return resp.json();
+}
+
+export type Notification = {
+  id: number;
+  org_id: number;
+  message: string;
+  link_path: string;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function listNotifications(token: string): Promise<Notification[]> {
+  const resp = await fetch(`/api/notifications`, { headers: authHeaders(token) });
+  if (!resp.ok) throw await parseError(resp, "We couldn't load notifications — try again.");
+  return resp.json();
+}
+
+export async function markNotificationRead(token: string, id: number): Promise<Notification> {
+  const resp = await fetch(`/api/notifications/${id}/read`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't update that notification — try again.");
   return resp.json();
 }
