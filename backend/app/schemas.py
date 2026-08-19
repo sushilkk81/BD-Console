@@ -197,6 +197,7 @@ class KamAssessmentIn(BaseModel):
     kam_cost_usd: float = Field(gt=0)
     kam_timeline_months: int = Field(gt=0)
     kam_notes: Optional[str] = None
+    tentative_approval_months: Optional[int] = None
 
 
 class BdReviewIn(BaseModel):

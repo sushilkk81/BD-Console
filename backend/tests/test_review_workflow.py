@@ -314,3 +314,13 @@ def test_get_messages_404_for_non_owner_customer(client, seed_reference_product,
     other_token, _ = _login(client, "someone@othercompany.com")
     resp = client.get(f"/requests/{request_id}/messages", headers=_auth(other_token))
     assert resp.status_code == 404
+
+
+def test_kam_assessment_can_set_tentative_approval_months(client, seed_reference_product, seed_service_pricing):
+    request_id, _, kam_token, _, _ = _assigned_request(client, seed_reference_product, seed_service_pricing)
+
+    resp = client.post(f"/requests/{request_id}/kam-assessment",
+                        json={"kam_cost_usd": 125000, "kam_timeline_months": 6, "tentative_approval_months": 9},
+                        headers=_auth(kam_token))
+    assert resp.status_code == 200
+    assert resp.json()["tentative_approval_months"] == 9

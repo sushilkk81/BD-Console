@@ -402,6 +402,8 @@ def submit_kam_assessment(request_id: int, payload: KamAssessmentIn, db: Session
     req.kam_cost_usd = payload.kam_cost_usd
     req.kam_timeline_months = payload.kam_timeline_months
     req.kam_notes = payload.kam_notes
+    if payload.tentative_approval_months is not None:
+        req.tentative_approval_months = payload.tentative_approval_months
     req.status = "KAM Assessment Submitted"
     db.commit()
     db.refresh(req)
