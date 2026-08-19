@@ -140,6 +140,9 @@ export default function RequestWizardPage() {
     setDevice(ref?.device ?? null);
     setDifferentiated(false);
     setViscosityVal("");
+    setStrengthLookupNotFound(false);
+    setViscosityLookup(null);
+    setViscosityLookupNotFound(false);
   }
 
   function handleBrandChange(nextBrand: string) {
