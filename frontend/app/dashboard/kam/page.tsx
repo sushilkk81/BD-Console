@@ -205,7 +205,68 @@ export default function KamWorkspacePage() {
                   <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">Status</dt>
                   <dd><StatusChip status={active.status} /></dd>
                 </div>
+                {active.platform_design_verification_request && (
+                  <div>
+                    <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+                      Platform Design Verification
+                    </dt>
+                    <dd className="font-body text-sm font-medium text-forest-600">Requested</dd>
+                  </div>
+                )}
+                {active.sample_request && (
+                  <div>
+                    <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">Sample request</dt>
+                    <dd className="font-body text-sm font-medium text-forest-600">
+                      Requested{active.sample_request_qty != null ? ` · qty ${active.sample_request_qty}` : ""}
+                    </dd>
+                  </div>
+                )}
+                {active.exhibit_batch_start && active.exhibit_batch_end && (
+                  <div>
+                    <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+                      Tentative exhibit batch
+                    </dt>
+                    <dd className="font-body text-sm text-ink-700">
+                      {active.exhibit_batch_start} → {active.exhibit_batch_end}
+                    </dd>
+                  </div>
+                )}
+                {active.tentative_approval_months != null && (
+                  <div>
+                    <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+                      Tentative approval
+                    </dt>
+                    <dd className="font-body text-sm text-ink-700">{active.tentative_approval_months} month(s)</dd>
+                  </div>
+                )}
+                {active.assembly_machine_qualification && (
+                  <div>
+                    <dt className="font-body text-xs uppercase tracking-wide text-ink-700/70">
+                      Assembly machine qualification
+                    </dt>
+                    <dd className="font-body text-sm text-ink-700">
+                      Qty {active.assembly_qualification_qty ?? "—"}
+                      {active.assembly_qualification_date ? ` · ${active.assembly_qualification_date}` : ""}
+                    </dd>
+                  </div>
+                )}
               </dl>
+              {activeDetail && activeDetail.sku_rows.some((r) => r.batch_size_l != null) && (
+                <div className="mt-4 border-t border-ink-700/10 pt-4">
+                  <h3 className="mb-2 font-body text-xs uppercase tracking-wide text-ink-700/70">
+                    Batch size / pens
+                  </h3>
+                  <ul className="flex flex-col gap-1">
+                    {activeDetail.sku_rows
+                      .filter((r) => r.batch_size_l != null)
+                      .map((r) => (
+                        <li key={r.id} className="font-body text-sm text-ink-700">
+                          {r.strength}: {r.batch_size_l} L → ≈ {Math.round((r.batch_size_l! * 1000) / r.fill_ml)} pens
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
               {actionError && <Banner message={actionError} onDismiss={() => setActionError("")} />}
 
               {activeDetail && (active.status.startsWith("Assigned to ") || active.status === "Revision Requested") && (
