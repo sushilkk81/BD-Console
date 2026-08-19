@@ -19,6 +19,7 @@ import {
   updateServices,
 } from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
+import { MARKETS } from "@/lib/markets";
 import { Header } from "@/components/Header";
 import { Card } from "@/components/Card";
 import { Banner } from "@/components/Banner";
@@ -27,11 +28,6 @@ import { SelectField } from "@/components/SelectField";
 import { TextField } from "@/components/TextField";
 import { MessageThread } from "@/components/MessageThread";
 
-const MARKETS = [
-  { value: "US", label: "US" },
-  { value: "EU", label: "EU" },
-  { value: "Canada", label: "Canada" },
-];
 const CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"];
 const RESPONDED_STATUSES = ["Responded to Customer", "Customer Query"];
 const STEPS = [
