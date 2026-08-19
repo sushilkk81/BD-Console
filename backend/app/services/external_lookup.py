@@ -22,6 +22,10 @@ FDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 ANTHROPIC_MODEL = "claude-opus-5"
 HTTP_TIMEOUT_SECONDS = 10.0
+# LLM completions (tool-use extraction/synthesis) routinely take longer than a plain HTTP
+# fetch — give the Anthropic client more headroom than HTTP_TIMEOUT_SECONDS so a normal-length
+# completion isn't cut off, while still bounding worst-case request latency.
+ANTHROPIC_TIMEOUT_SECONDS = 30.0
 
 
 def cartridge_for_fill(fill_ml: float) -> str:
@@ -68,7 +72,9 @@ class LookupService:
     @property
     def anthropic_client(self) -> "anthropic.Anthropic":
         if self._anthropic_client is None:
-            self._anthropic_client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+            self._anthropic_client = anthropic.Anthropic(
+                api_key=self.settings.anthropic_api_key, timeout=ANTHROPIC_TIMEOUT_SECONDS
+            )
         return self._anthropic_client
 
     def lookup_strengths(self, brand: str, market: str) -> StrengthLookupResult:
@@ -251,5 +257,8 @@ class LookupService:
         )
 
 
+_lookup_service_singleton = LookupService(settings=get_settings())
+
+
 def get_lookup_service() -> LookupService:
-    return LookupService(settings=get_settings())
+    return _lookup_service_singleton
