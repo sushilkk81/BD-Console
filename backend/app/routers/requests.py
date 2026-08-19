@@ -162,13 +162,21 @@ def get_request_detail(request_id: int, db: Session = Depends(get_db),
     return _serialize_detail(db, req, include_routing=include_routing)
 
 
-def _upsert_sku_rows(db: Session, req: Request, rows_in: list) -> bool:
+def _upsert_sku_rows(db: Session, req: Request, brand: str, market: str, rows_in: list) -> bool:
     """Upsert req.sku_rows by strength; returns True if the strength set changed.
 
     Preserves sku_rows.id (and therefore service_selections) for any strength that's
     still present, so an edit that only tweaks cartridge/fill_ml doesn't orphan an
     already-priced SKU's service selections. See the plan's "implementation decisions"
     note on reconciling the full-replace contract with the service_selections FK.
+
+    A brand-new strength (no existing row) gets its cartridge/fill_ml computed
+    server-side via presentation_for, matching create_request — the frontend can only
+    default a freshly-added strength from market-agnostic base data unless the customer
+    separately ran a live lookup for this request's market, so trusting the client's
+    guess here would silently persist wrong-market presentation data. An already-saved
+    strength's cartridge/fill_ml still comes from the client, since the wizard's
+    cartridge/fill fields are intentionally hand-editable.
     """
     existing = {row.strength: row for row in req.sku_rows}
     incoming_strengths = {r.strength for r in rows_in}
@@ -180,13 +188,16 @@ def _upsert_sku_rows(db: Session, req: Request, rows_in: list) -> bool:
             db.delete(row)
     db.flush()
 
+    ref = reference_data.variants_for(db, brand, market)
+    default_cart = ref["cartridge"] if ref else "3 mL"
     for r in rows_in:
         row = existing.get(r.strength)
         if row is not None and r.strength in incoming_strengths:
             row.cartridge = r.cartridge
             row.fill_ml = r.fill_ml
         else:
-            db.add(SkuRow(request_id=req.id, strength=r.strength, cartridge=r.cartridge, fill_ml=r.fill_ml))
+            cart, fill, _ = reference_data.presentation_for(db, brand, r.strength, market, default_cart)
+            db.add(SkuRow(request_id=req.id, strength=r.strength, cartridge=cart, fill_ml=fill))
     return changed
 
 
@@ -195,7 +206,7 @@ def update_request_step1(request_id: int, payload: RequestStep1Update, db: Sessi
                           current_user: User = Depends(get_current_user)):
     req = _owned_draft_or_404(db, request_id, current_user)
 
-    rows_changed = _upsert_sku_rows(db, req, payload.sku_rows)
+    rows_changed = _upsert_sku_rows(db, req, payload.brand, payload.market, payload.sku_rows)
     rld_changed = req.brand != payload.brand or req.market != payload.market or rows_changed
 
     req.brand = payload.brand
