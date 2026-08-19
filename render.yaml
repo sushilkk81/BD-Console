@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: bd-console-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /docs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bd-console-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      # Replace with the deployed Vercel frontend URL(s), e.g.
+      # '["https://bd-console.vercel.app"]'. Must be valid JSON — a bare
+      # domain string will fail Settings' list[str] parsing at boot.
+      - key: CORS_ORIGINS
+        value: '["http://localhost:3000"]'
+      - key: ANTHROPIC_API_KEY
+        value: ""
+      - key: TAVILY_API_KEY
+        value: ""
+
+databases:
+  - name: bd-console-db
+    plan: free
+    databaseName: bdconsole
+    user: bdconsole
