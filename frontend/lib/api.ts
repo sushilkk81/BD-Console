@@ -46,7 +46,13 @@ export async function login(name: string, email: string, role?: string, title?: 
   }>;
 }
 
-export type SkuRow = { id: number; strength: string; cartridge: string; fill_ml: number };
+export type SkuRow = {
+  id: number;
+  strength: string;
+  cartridge: string;
+  fill_ml: number;
+  batch_size_l: number | null;
+};
 export type ServiceSelection = {
   id: number;
   sku_row_id: number;
@@ -78,6 +84,15 @@ export type RequestRow = {
   kam_cost_usd: number | null;
   kam_timeline_months: number | null;
   kam_notes: string | null;
+  exhibit_batch_start: string | null;
+  exhibit_batch_end: string | null;
+  tentative_approval_months: number | null;
+  assembly_machine_qualification: boolean | null;
+  assembly_qualification_qty: number | null;
+  assembly_qualification_date: string | null;
+  platform_design_verification_request: boolean | null;
+  sample_request: boolean | null;
+  sample_request_qty: number | null;
 };
 export type RequestDetail = RequestRow & { sku_rows: SkuRow[]; service_selections: ServiceSelection[] };
 
@@ -224,6 +239,31 @@ export async function updateRequestStep1(
 export async function getPlatformOptions(token: string, id: number): Promise<PlatformOptions> {
   const resp = await fetch(`/api/requests/${id}/platform-options`, { headers: authHeaders(token) });
   if (!resp.ok) throw await parseError(resp, "We couldn't load platform options — try again.");
+  return resp.json();
+}
+
+export async function updatePlatformOptions(
+  token: string,
+  id: number,
+  body: {
+    exhibit_batch_start: string | null;
+    exhibit_batch_end: string | null;
+    tentative_approval_months: number | null;
+    assembly_machine_qualification: boolean | null;
+    assembly_qualification_qty: number | null;
+    assembly_qualification_date: string | null;
+    platform_design_verification_request: boolean | null;
+    sample_request: boolean | null;
+    sample_request_qty: number | null;
+    sku_batch_sizes: { sku_row_id: number; batch_size_l: number | null }[];
+  }
+): Promise<RequestDetail> {
+  const resp = await fetch(`/api/requests/${id}/platform-options`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't save those details — try again.");
   return resp.json();
 }
 
