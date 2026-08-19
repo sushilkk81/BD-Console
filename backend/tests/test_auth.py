@@ -55,6 +55,13 @@ def test_login_customer_creates_org_by_domain(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["user"]["role"] == "Customer"
+    assert body["user"]["org_name"] == "pfizer.com"
+
+
+def test_login_internal_returns_shaily_org_name(client):
+    resp = client.post("/auth/login", json={
+        "name": "Mahesh", "email": "mahesh@shaily.com", "role": "BD Manager"})
+    assert resp.json()["user"]["org_name"] == "Shaily"
 
 
 def test_login_customer_requires_title_and_phone(client):

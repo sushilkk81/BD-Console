@@ -446,15 +446,20 @@ export default function RequestWizardPage() {
 
                 <div>
                   <h2 className="mb-2 font-display text-base font-semibold text-forest-900">Device type</h2>
-                  <label className="flex items-center gap-2 font-body text-sm text-ink-700">
-                    <input
-                      type="checkbox"
-                      disabled={!isDraft}
-                      checked={differentiated}
-                      onChange={(e) => setDifferentiated(e.target.checked)}
-                    />
-                    Differentiated formulation (override auto-selected device)
-                  </label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={differentiated}
+                    disabled={!isDraft}
+                    onClick={() => isDraft && setDifferentiated(!differentiated)}
+                    className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      differentiated
+                        ? "border-forest-600 bg-forest-600/10 text-forest-900"
+                        : "border-ink-700/15 text-ink-700/70 hover:border-forest-600/40"
+                    }`}
+                  >
+                    {differentiated ? "✓ " : ""}Differentiated formulation (override auto-selected device)
+                  </button>
                   {differentiated ? (
                     <div className="mt-2 w-56">
                       <SelectField

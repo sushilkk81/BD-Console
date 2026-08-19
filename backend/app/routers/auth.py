@@ -91,6 +91,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     token = create_token(user.id, user.org_id, user.role)
     return LoginResponse(
         access_token=token,
-        user=UserOut(id=user.id, org_id=user.org_id, name=user.name, email=user.email, role=user.role),
+        user=UserOut(id=user.id, org_id=user.org_id, org_name=org.name, name=user.name,
+                     email=user.email, role=user.role),
         session_id=session_id,
     )

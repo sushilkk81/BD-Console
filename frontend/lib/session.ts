@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export type Role = "BD Manager" | "Key Account Manager" | "Customer";
-export type SessionUser = { id: number; org_id: number; name: string; email: string; role: Role };
+export type SessionUser = { id: number; org_id: number; org_name: string; name: string; email: string; role: Role };
 
 export const LANDING: Record<Role, string> = {
   "BD Manager": "/dashboard/manager",

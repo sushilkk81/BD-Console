@@ -117,6 +117,28 @@ def test_requests_requires_auth(client):
     assert resp.status_code == 401
 
 
+def test_count_requests_matches_list_and_is_org_scoped(client):
+    pfizer_token, _ = _login(client, "anaya@pfizer.com")
+    other_token, _ = _login(client, "someone@othercompany.com")
+
+    client.post("/requests", json={"brand": "Ozempic", "market": "US"},
+                headers={"Authorization": f"Bearer {pfizer_token}"})
+    client.post("/requests", json={"brand": "Ozempic", "market": "EU"},
+                headers={"Authorization": f"Bearer {pfizer_token}"})
+
+    resp = client.get("/requests/count", headers={"Authorization": f"Bearer {pfizer_token}"})
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 2
+
+    resp = client.get("/requests/count", headers={"Authorization": f"Bearer {other_token}"})
+    assert resp.json()["count"] == 0
+
+
+def test_count_requests_requires_auth(client):
+    resp = client.get("/requests/count")
+    assert resp.status_code == 401
+
+
 def test_bd_manager_sees_requests_across_customer_orgs(client):
     pfizer_token, _ = _login(client, "anaya@pfizer.com")
     other_token, _ = _login(client, "someone@othercompany.com")

@@ -8,8 +8,8 @@ from app.deps import get_current_user, require_role
 from app.models import (Organization, OrgKamMap, PlatformSheet, Request, RequestMessage, ServicePricing,
                          ServiceSelection, SkuRow, User)
 from app.schemas import (BdReviewIn, KamAssessmentIn, MessageIn, MessageOut, PlatformOptionRow, PlatformOptionsOut,
-                          RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update, RespondToCustomerIn,
-                          SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
+                          RequestCountOut, RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update,
+                          RespondToCustomerIn, SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
 from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -111,8 +111,8 @@ def create_request(payload: RequestCreate, db: Session = Depends(get_db),
     return _serialize_detail(db, req)
 
 
-@router.get("", response_model=list[RequestOut])
-def list_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def _scoped_requests(db: Session, current_user: User):
+    """Role-scoped Request query, matching list_requests' visibility rules."""
     q = db.query(Request)
     include_routing = False
     if current_user.role == "BD Manager":
@@ -123,8 +123,20 @@ def list_requests(db: Session = Depends(get_db), current_user: User = Depends(ge
         include_routing = True
     else:
         q = q.filter(Request.org_id == current_user.org_id)
+    return q, include_routing
+
+
+@router.get("", response_model=list[RequestOut])
+def list_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    q, include_routing = _scoped_requests(db, current_user)
     reqs = q.order_by(Request.created_at.desc()).all()
     return serialize_requests(db, reqs, include_routing=include_routing)
+
+
+@router.get("/count", response_model=RequestCountOut)
+def count_requests(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    q, _ = _scoped_requests(db, current_user)
+    return RequestCountOut(count=q.count())
 
 
 def _visible_or_404(db: Session, request_id: int, user: User) -> tuple[Request, bool]:

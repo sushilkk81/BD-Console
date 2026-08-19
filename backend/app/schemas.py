@@ -18,6 +18,7 @@ class LoginRequest(BaseModel):
 class UserOut(BaseModel):
     id: int
     org_id: int
+    org_name: str
     name: str
     email: str
     role: str
@@ -270,3 +271,7 @@ class NotificationOut(BaseModel):
     link_path: str
     is_read: bool
     created_at: dt.datetime
+
+
+class RequestCountOut(BaseModel):
+    count: int

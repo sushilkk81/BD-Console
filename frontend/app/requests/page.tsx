@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createRequest, listRequests, ApiError, RequestRow } from "@/lib/api";
+import { createRequest, listRequests, listReferenceProducts, ApiError, RequestRow } from "@/lib/api";
 import { useRoleGuard } from "@/lib/session";
 import { Button } from "@/components/Button";
-import { TextField } from "@/components/TextField";
+import { AutocompleteField } from "@/components/AutocompleteField";
 import { SelectField } from "@/components/SelectField";
 import { Card } from "@/components/Card";
 import { Header } from "@/components/Header";
@@ -23,6 +23,7 @@ export default function RequestsPage() {
   const { token, user } = useRoleGuard("Customer");
   const router = useRouter();
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [brandOptions, setBrandOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewForm, setShowNewForm] = useState(false);
   const [brand, setBrand] = useState("");
@@ -40,6 +41,11 @@ export default function RequestsPage() {
         setLoadError(err instanceof ApiError ? err.message : "We couldn't load your requests — try again.")
       )
       .finally(() => setLoading(false));
+    listReferenceProducts(token)
+      .then((products) => setBrandOptions(products.map((p) => p.brand)))
+      .catch(() => {
+        // a failed suggestions fetch shouldn't block starting a request — brand stays free text
+      });
   }, [token]);
 
   async function handleCreate(e: React.FormEvent) {
@@ -69,7 +75,7 @@ export default function RequestsPage() {
 
   return (
     <>
-      <Header userName={user?.name} role={user?.role} />
+      <Header userName={user?.name} role={user?.role} token={token ?? undefined} />
       <main className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
         <section>
           <div className="mb-4 flex items-center justify-between">
@@ -81,7 +87,14 @@ export default function RequestsPage() {
             <Card className="mb-6">
               <form onSubmit={handleCreate} className="flex flex-col gap-4 sm:flex-row sm:items-end" noValidate>
                 <div className="flex-1">
-                  <TextField label="Brand" name="brand" value={brand} onChange={setBrand} error={fieldErrors.brand} />
+                  <AutocompleteField
+                    label="Brand"
+                    name="brand"
+                    value={brand}
+                    onChange={setBrand}
+                    options={brandOptions}
+                    error={fieldErrors.brand}
+                  />
                 </div>
                 <div className="w-full sm:w-40">
                   <SelectField label="Market" name="market" value={market} onChange={setMarket} options={MARKETS} />

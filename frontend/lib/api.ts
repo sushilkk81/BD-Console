@@ -41,7 +41,7 @@ export async function login(name: string, email: string, role?: string, title?: 
   return resp.json() as Promise<{
     access_token: string;
     token_type: string;
-    user: { id: number; org_id: number; name: string; email: string; role: string };
+    user: { id: number; org_id: number; org_name: string; name: string; email: string; role: string };
     session_id: string | null;
   }>;
 }
@@ -137,6 +137,17 @@ export async function listRequests(token: string): Promise<RequestRow[]> {
     throw await parseError(resp, "We couldn't load your requests — try again.");
   }
   return resp.json();
+}
+
+export async function getRequestCount(token: string): Promise<number> {
+  const resp = await fetch(`/api/requests/count`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    throw await parseError(resp, "We couldn't load your request count — try again.");
+  }
+  const body = (await resp.json()) as { count: number };
+  return body.count;
 }
 
 export async function listReferenceProducts(token: string): Promise<ReferenceProduct[]> {

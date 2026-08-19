@@ -3,9 +3,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Notification, listNotifications, markNotificationRead } from "@/lib/api";
-
-type Role = "BD Manager" | "Key Account Manager" | "Customer";
+import { Notification, getRequestCount, listNotifications, markNotificationRead } from "@/lib/api";
+import type { Role } from "@/lib/session";
 
 const NAV: Record<Role, { label: string; href: string }[]> = {
   "BD Manager": [
@@ -16,6 +15,31 @@ const NAV: Record<Role, { label: string; href: string }[]> = {
   "Key Account Manager": [{ label: "My workspace", href: "/dashboard/kam" }],
   Customer: [{ label: "Requests", href: "/requests" }],
 };
+
+function readLocalStorage(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(key);
+}
+
+function LogoutButton() {
+  const router = useRouter();
+  function handleLogout() {
+    localStorage.removeItem("bdconsole_token");
+    localStorage.removeItem("bdconsole_user");
+    localStorage.removeItem("bdconsole_session_id");
+    localStorage.removeItem("bdconsole_login_at");
+    router.push("/login");
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleLogout}
+      className="rounded-lg border border-ink-700/15 px-3 py-1.5 font-body text-sm font-medium text-ink-700/70 transition-colors hover:border-forest-600 hover:text-forest-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-600"
+    >
+      Logout
+    </button>
+  );
+}
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -101,7 +125,29 @@ function NotificationBell({ token }: { token: string }) {
 }
 
 export function Header({ userName, role, token }: { userName?: string; role?: Role; token?: string }) {
-  const links = role ? NAV[role] : [];
+  const [orgName, setOrgName] = useState<string | null>(null);
+  const [loginAt, setLoginAt] = useState<string | null>(null);
+  const [requestCount, setRequestCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const rawUser = readLocalStorage("bdconsole_user");
+    setOrgName(rawUser ? (JSON.parse(rawUser).org_name ?? null) : null);
+    setLoginAt(readLocalStorage("bdconsole_login_at"));
+  }, []);
+
+  useEffect(() => {
+    if (role !== "Customer" || !token) return;
+    getRequestCount(token)
+      .then(setRequestCount)
+      .catch(() => {
+        // a failed count fetch should never break header rendering — label falls back to "Requests"
+      });
+  }, [role, token]);
+
+  const links = (role ? NAV[role] : []).map((l) =>
+    role === "Customer" && requestCount != null ? { ...l, label: `Request No: ${requestCount}` } : l
+  );
+
   return (
     <header className="border-b border-ink-700/10 bg-white">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
@@ -115,7 +161,7 @@ export function Header({ userName, role, token }: { userName?: string; role?: Ro
               <Link
                 key={l.href}
                 href={l.href}
-                className="font-body text-sm text-ink-700/70 transition-colors hover:text-forest-600"
+                className="font-body text-base text-ink-700/70 transition-colors hover:text-forest-600"
               >
                 {l.label}
               </Link>
@@ -124,7 +170,15 @@ export function Header({ userName, role, token }: { userName?: string; role?: Ro
         )}
         <div className="flex items-center gap-3">
           {role === "BD Manager" && token && <NotificationBell token={token} />}
-          {userName && <span className="font-body text-sm text-ink-700/70">{userName}</span>}
+          {userName && (
+            <div className="flex flex-col items-end leading-tight">
+              <span className="font-body text-sm text-ink-700">{userName}</span>
+              <span className="font-body text-xs text-ink-700/60">
+                {[orgName, loginAt ? new Date(loginAt).toLocaleDateString() : null].filter(Boolean).join(" · ")}
+              </span>
+            </div>
+          )}
+          {userName && <LogoutButton />}
         </div>
       </div>
       <div
