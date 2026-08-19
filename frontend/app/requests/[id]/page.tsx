@@ -282,6 +282,18 @@ export default function RequestWizardPage() {
   }
 
   useEffect(() => {
+    if (!detail) return;
+    setBatchSizes((prev) => {
+      const validIds = new Set(detail.sku_rows.map((r) => r.id));
+      const next: Record<number, number | ""> = {};
+      for (const row of detail.sku_rows) {
+        next[row.id] = row.id in prev && validIds.has(row.id) ? prev[row.id] : row.batch_size_l ?? "";
+      }
+      return next;
+    });
+  }, [detail?.sku_rows]);
+
+  useEffect(() => {
     if (step !== "options" || !token || !detail) return;
     setOptionsLoading(true);
     setOptionsError("");
@@ -321,10 +333,12 @@ export default function RequestWizardPage() {
         platform_design_verification_request: pdvr,
         sample_request: sampleRequest,
         sample_request_qty: sampleRequestQty === "" ? null : Number(sampleRequestQty),
-        sku_batch_sizes: Object.entries(batchSizes).map(([id, v]) => ({
-          sku_row_id: Number(id),
-          batch_size_l: v === "" ? null : Number(v),
-        })),
+        sku_batch_sizes: Object.entries(batchSizes)
+          .filter(([id]) => (detail?.sku_rows ?? []).some((r) => r.id === Number(id)))
+          .map(([id, v]) => ({
+            sku_row_id: Number(id),
+            batch_size_l: v === "" ? null : Number(v),
+          })),
       });
       setDetail(updated);
       setPlatformOptionsSaved(true);
@@ -834,7 +848,14 @@ export default function RequestWizardPage() {
                             key={label}
                             type="button"
                             disabled={!isDraft}
-                            onClick={() => isDraft && setAssemblyQualification(val)}
+                            onClick={() => {
+                              if (!isDraft) return;
+                              setAssemblyQualification(val);
+                              if (!val) {
+                                setAssemblyQualificationQty("");
+                                setAssemblyQualificationDate("");
+                              }
+                            }}
                             className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                               assemblyQualification === val
                                 ? "border-forest-600 bg-forest-600/10 text-forest-900"
@@ -900,7 +921,11 @@ export default function RequestWizardPage() {
                             key={label}
                             type="button"
                             disabled={!isDraft}
-                            onClick={() => isDraft && setSampleRequest(val)}
+                            onClick={() => {
+                              if (!isDraft) return;
+                              setSampleRequest(val);
+                              if (!val) setSampleRequestQty("");
+                            }}
                             className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                               sampleRequest === val
                                 ? "border-forest-600 bg-forest-600/10 text-forest-900"
