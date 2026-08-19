@@ -268,6 +268,12 @@ export default function RequestWizardPage() {
         sku_rows: skuRows,
       });
       setDetail(updated);
+      // Re-sync the editable draft from the server's response: a brand-new strength's
+      // cartridge/fill_ml is computed server-side from reference data (see
+      // _upsert_sku_rows), which can differ from the client's placeholder guess. Without
+      // this, the form keeps showing (and would re-persist on the next save) the stale
+      // guess instead of the corrected value.
+      setSkuRows(updated.sku_rows.map((r) => ({ strength: r.strength, cartridge: r.cartridge, fill_ml: r.fill_ml })));
       return true;
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "We couldn't save this step — try again.");

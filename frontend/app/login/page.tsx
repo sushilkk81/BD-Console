@@ -110,7 +110,7 @@ export default function LoginPage() {
             fill
             priority
             sizes="50vw"
-            className="object-cover object-center"
+            className="object-contain object-center"
             aria-hidden="true"
           />
         </div>
