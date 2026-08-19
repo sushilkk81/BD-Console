@@ -14,10 +14,11 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "typescript": "5.6.2",
-    "@types/react": "18.3.5",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "22.5.5",
+    "@types/react": "18.3.5",
+    "puppeteer": "^25.8.0",
     "tailwindcss": "^4.3.3",
-    "@tailwindcss/postcss": "^4.3.3"
+    "typescript": "5.6.2"
   }
 }
