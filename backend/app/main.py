@@ -22,6 +22,9 @@ app.include_router(customer_visits_router)
 from app.routers.reference_products import router as reference_products_router
 app.include_router(reference_products_router)
 
+from app.routers.reference_lookup import router as reference_lookup_router
+app.include_router(reference_lookup_router)
+
 from app.routers.dashboard import router as dashboard_router
 app.include_router(dashboard_router)
 
