@@ -367,6 +367,40 @@ def test_put_request_step1_brand_change_upserts_rows_and_cascades_reset(
     assert body["service_selections"] == []
 
 
+def test_put_request_step1_new_strength_uses_market_presentation_not_client_value(
+    client, seed_reference_product,
+):
+    """A brand-new SkuRow (strength not previously on this request) must get its
+    cartridge/fill_ml from presentation_for(payload.market), ignoring whatever the
+    client sent — otherwise adding a strength after a market switch (with no live
+    lookup) silently persists base-brand or stale-market presentation data."""
+    from app.db import get_db
+    from app.models import ReferenceProductMarket
+    db = next(app.dependency_overrides[get_db]())
+    db.add(ReferenceProductMarket(
+        brand="Ozempic", market="South Korea",
+        presentations={"1 mg": ["1 mL PFS", 0.9]},
+        pres_ref="KR label",
+    ))
+    db.commit()
+    db.close()
+
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "South Korea"},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    # Client sends a bogus cartridge/fill for the new strength — should be ignored.
+    resp = client.put(f"/requests/{created['id']}", headers={"Authorization": f"Bearer {token}"}, json={
+        "brand": "Ozempic", "market": "South Korea", "strengths": ["1 mg"], "viscosity_val": None,
+        "device": "Pen Injector", "differentiated": False,
+        "sku_rows": [{"strength": "1 mg", "cartridge": "3 mL", "fill_ml": 999.0}],
+    })
+    assert resp.status_code == 200
+    row = resp.json()["sku_rows"][0]
+    assert row["cartridge"] == "1 mL PFS"
+    assert row["fill_ml"] == 0.9
+
+
 def test_put_request_step1_rejects_unknown_cartridge(client, seed_reference_product):
     token, _ = _login(client, "anaya@pfizer.com")
     created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},

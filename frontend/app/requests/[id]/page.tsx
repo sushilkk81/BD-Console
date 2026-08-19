@@ -12,6 +12,8 @@ import {
   getPlatformOptions,
   getRequestDetail,
   listReferenceProducts,
+  lookupStrengths,
+  lookupViscosity,
   postMessage,
   selectOption,
   submitRequest,
@@ -61,6 +63,15 @@ export default function RequestWizardPage() {
   const [device, setDevice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [strengthLookupLoading, setStrengthLookupLoading] = useState(false);
+  const [strengthLookupNotFound, setStrengthLookupNotFound] = useState(false);
+  const [viscosityLookup, setViscosityLookup] = useState<{ visc_val: number; citation: string | null } | null>(null);
+  const [viscosityLookupLoading, setViscosityLookupLoading] = useState(false);
+  const [viscosityLookupNotFound, setViscosityLookupNotFound] = useState(false);
+  const [lookedUpBrandMarket, setLookedUpBrandMarket] = useState<string | null>(null);
+  const [liveLookupPresentations, setLiveLookupPresentations] = useState<
+    Record<string, { cartridge: string; fill_ml: number }>
+  >({});
 
   const [options, setOptions] = useState<PlatformOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(false);
@@ -122,6 +133,8 @@ export default function RequestWizardPage() {
       const existing = new Map(prev.map((r) => [r.strength, r]));
       return next.map((s) => {
         if (existing.has(s)) return existing.get(s)!;
+        const live = liveLookupPresentations[s];
+        if (live) return { strength: s, cartridge: live.cartridge, fill_ml: live.fill_ml };
         const cart = currentRef?.cartridge ?? "3 mL";
         return { strength: s, cartridge: cart, fill_ml: 1.5 };
       });
@@ -133,6 +146,11 @@ export default function RequestWizardPage() {
     setDevice(ref?.device ?? null);
     setDifferentiated(false);
     setViscosityVal("");
+    setStrengthLookupNotFound(false);
+    setViscosityLookup(null);
+    setViscosityLookupNotFound(false);
+    setLookedUpBrandMarket(null);
+    setLiveLookupPresentations({});
   }
 
   function handleBrandChange(nextBrand: string) {
@@ -144,6 +162,65 @@ export default function RequestWizardPage() {
   function handleMarketChange(nextMarket: string) {
     setMarket(nextMarket);
     resetForRefChange(currentRef ?? undefined);
+  }
+
+  async function handleLiveStrengthLookup() {
+    if (!token || !brand || !market) return;
+    setStrengthLookupLoading(true);
+    setStrengthLookupNotFound(false);
+    try {
+      const result = await lookupStrengths(token, brand, market);
+      if (result.found) {
+        setLookedUpBrandMarket(`${brand}|${market}`);
+        setLiveLookupPresentations((prev) => {
+          const next = { ...prev };
+          for (const s of result.strengths) {
+            next[s.strength] = { cartridge: s.cartridge, fill_ml: s.fill_ml };
+          }
+          return next;
+        });
+        setRefProducts((prev) => {
+          const existing = prev.find((p) => p.brand === result.brand);
+          const merged: ReferenceProduct = {
+            brand: result.brand,
+            molecule: result.molecule ?? existing?.molecule ?? "",
+            device: result.device ?? existing?.device ?? "",
+            strengths: result.strengths.map((s) => s.strength),
+            visc_val: existing?.visc_val ?? 0,
+            visc_ref: existing?.visc_ref ?? "",
+            cartridge: result.strengths[0]?.cartridge ?? existing?.cartridge ?? "3 mL",
+          };
+          return existing ? prev.map((p) => (p.brand === result.brand ? merged : p)) : [...prev, merged];
+        });
+      } else {
+        setStrengthLookupNotFound(true);
+      }
+    } catch (err) {
+      console.error(err);
+      setStrengthLookupNotFound(true);
+    } finally {
+      setStrengthLookupLoading(false);
+    }
+  }
+
+  async function handleLiveViscosityLookup() {
+    if (!token || !brand) return;
+    setViscosityLookupLoading(true);
+    setViscosityLookupNotFound(false);
+    setViscosityLookup(null);
+    try {
+      const result = await lookupViscosity(token, brand, currentRef?.molecule);
+      if (result.found && result.visc_val != null) {
+        setViscosityLookup({ visc_val: result.visc_val, citation: result.citation });
+      } else {
+        setViscosityLookupNotFound(true);
+      }
+    } catch (err) {
+      console.error(err);
+      setViscosityLookupNotFound(true);
+    } finally {
+      setViscosityLookupLoading(false);
+    }
   }
 
   async function saveStep1(): Promise<boolean> {
@@ -378,6 +455,27 @@ export default function RequestWizardPage() {
                       />
                     </div>
                   </div>
+                  {isDraft && brand && market && lookedUpBrandMarket !== `${brand}|${market}` && (
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        loading={strengthLookupLoading}
+                        onClick={handleLiveStrengthLookup}
+                      >
+                        {strengthLookupLoading
+                          ? "Looking up…"
+                          : currentRef
+                          ? "🔍 Refresh for this market"
+                          : "🔍 Look up live"}
+                      </Button>
+                      {strengthLookupNotFound && (
+                        <p className="mt-2 font-body text-xs text-ink-700/70">
+                          No data found for this brand/market — enter details manually.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {currentRef && (
                     <p className="mt-2 font-body text-xs text-ink-700/70">
                       ✓ Recognised — <b>{currentRef.molecule}</b> · device auto-set to <b>{currentRef.device}</b>.
@@ -425,17 +523,41 @@ export default function RequestWizardPage() {
                         onChange={isDraft ? (v) => setViscosityVal(v === "" ? "" : Number(v)) : () => {}}
                       />
                     </div>
-                    {isDraft && currentRef && (
+                    {isDraft && brand && (
                       <Button
                         type="button"
                         variant="secondary"
-                        onClick={() => setViscosityVal(currentRef.visc_val)}
+                        loading={viscosityLookupLoading}
+                        onClick={handleLiveViscosityLookup}
                       >
-                        ＋ Need assistance
+                        {viscosityLookupLoading ? "Searching…" : "＋ Need assistance"}
                       </Button>
                     )}
                   </div>
-                  {currentRef?.visc_ref && (
+                  {viscosityLookup && (
+                    <p className="mt-2 font-body text-xs text-ink-700/70">
+                      Literature suggests <b>{viscosityLookup.visc_val} cP</b>.{" "}
+                      <button
+                        type="button"
+                        className="font-medium text-forest-600 underline-offset-2 hover:underline"
+                        onClick={() => setViscosityVal(viscosityLookup.visc_val)}
+                      >
+                        Use this value
+                      </button>
+                      {viscosityLookup.citation && (
+                        <>
+                          {" "}
+                          — <i>*{viscosityLookup.citation}</i>
+                        </>
+                      )}
+                    </p>
+                  )}
+                  {viscosityLookupNotFound && (
+                    <p className="mt-2 font-body text-xs text-ink-700/70">
+                      No literature value found — enter manually.
+                    </p>
+                  )}
+                  {!viscosityLookup && currentRef?.visc_ref && (
                     <p className="mt-2 font-body text-xs text-ink-700/70">📄 Literature reference: {currentRef.visc_ref}</p>
                   )}
                 </div>

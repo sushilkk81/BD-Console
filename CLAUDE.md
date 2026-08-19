@@ -28,6 +28,8 @@ PYTHONPATH=. DATABASE_URL="sqlite:///:memory:" JWT_SECRET=test \
 .venv/bin/alembic revision -m "description"
 ```
 
+`ANTHROPIC_API_KEY` and `TAVILY_API_KEY` are optional — the `/reference-lookup/*` endpoints degrade to `found: false` when unset, so the test suite and local dev both work without them.
+
 All backend tests override `get_db` with an in-memory SQLite session (see any `tests/test_*.py` for the fixture pattern) — no live Postgres required for the suite. SQLite does not enforce `VARCHAR` length limits the way Postgres does; be explicit about truncating user-derived strings before writing them into length-limited columns (`Request.status` is 50 chars, `AuditLog.detail` is 500) since the test suite can't catch an overflow there.
 
 ### Frontend (`frontend/`)

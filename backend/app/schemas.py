@@ -275,3 +275,35 @@ class NotificationOut(BaseModel):
 
 class RequestCountOut(BaseModel):
     count: int
+
+
+class ReferenceStrengthLookupIn(BaseModel):
+    brand: str = Field(max_length=100)
+    market: str = Field(max_length=50)
+
+
+class LookedUpStrength(BaseModel):
+    strength: str
+    cartridge: str
+    fill_ml: float
+
+
+class ReferenceStrengthLookupOut(BaseModel):
+    found: bool
+    brand: str
+    molecule: Optional[str] = None
+    device: Optional[str] = None
+    strengths: list[LookedUpStrength] = []
+    citation: Optional[str] = None
+
+
+class ReferenceViscosityLookupIn(BaseModel):
+    brand: str = Field(max_length=100)
+    molecule: Optional[str] = None
+
+
+class ReferenceViscosityLookupOut(BaseModel):
+    found: bool
+    brand: str
+    visc_val: Optional[float] = None
+    citation: Optional[str] = None
