@@ -16,6 +16,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-bdconsole}:${POSTGRES_PASSWORD:-bdconsole}@postgres:5432/${POSTGRES_DB:-bdconsole}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
       CORS_ORIGINS: '["http://localhost:3000"]'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
