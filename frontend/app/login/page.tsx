@@ -76,6 +76,7 @@ export default function LoginPage() {
       );
       localStorage.setItem("bdconsole_token", result.access_token);
       localStorage.setItem("bdconsole_user", JSON.stringify(result.user));
+      localStorage.setItem("bdconsole_login_at", new Date().toISOString());
       if (result.session_id) {
         localStorage.setItem("bdconsole_session_id", result.session_id);
       } else {
@@ -101,14 +102,20 @@ export default function LoginPage() {
         className="h-1 w-full bg-gradient-to-r from-forest-600 via-lime-500 to-orange-500"
         aria-hidden="true"
       />
-      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-12">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/login-hero.jpg')" }}
-          aria-hidden="true"
-        />
+      <main className="flex min-h-screen flex-col lg:flex-row">
+        <div className="relative hidden lg:block lg:min-h-screen lg:w-1/2">
+          <Image
+            src="/login-hero.png"
+            alt=""
+            fill
+            priority
+            sizes="50vw"
+            className="object-cover object-center"
+            aria-hidden="true"
+          />
+        </div>
 
-        <div className="relative z-10 flex w-full flex-col items-center">
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
           <Card className="w-full max-w-sm">
             <div className="mb-6 flex justify-center">
               <Image src="/shaily-logo.png" alt="Shaily" width={140} height={37} priority />
