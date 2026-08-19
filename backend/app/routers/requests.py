@@ -10,7 +10,7 @@ from app.models import (Organization, OrgKamMap, PlatformSheet, Request, Request
 from app.schemas import (BdReviewIn, KamAssessmentIn, MessageIn, MessageOut, PlatformOptionRow,
                           PlatformOptionsOut, PlatformOptionsUpdate, RequestCountOut, RequestCreate,
                           RequestDetailOut, RequestOut, RequestStep1Update, RespondToCustomerIn,
-                          SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuBatchSizeIn, SkuRowOut)
+                          SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
 from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])

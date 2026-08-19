@@ -113,7 +113,7 @@ def lookup_viscosity(payload: ReferenceViscosityLookupIn, db: Session = Depends(
                       current_user: User = Depends(get_current_user),
                       svc: LookupService = Depends(get_lookup_service)):
     base = db.get(ReferenceProduct, payload.brand)
-    if base is not None and base.visc_val_high is not None:
+    if base is not None and base.visc_val_low is not None and base.visc_val_high is not None:
         return ReferenceViscosityLookupOut(
             found=True, brand=payload.brand,
             visc_val_low=float(base.visc_val_low), visc_val_high=float(base.visc_val_high),

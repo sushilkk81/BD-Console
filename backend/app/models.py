@@ -132,7 +132,7 @@ class ReferenceProduct(Base):
     visc_val: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
     visc_val_low: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
     visc_val_high: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
-    visc_citations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    visc_citations: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     cartridge: Mapped[str] = mapped_column(String(50), nullable=False)
     strengths: Mapped[list] = mapped_column(JSON, nullable=False)
     visc_ref: Mapped[str] = mapped_column(String(300), nullable=False)
