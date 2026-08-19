@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import ForeignKey, JSON, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -55,6 +55,15 @@ class Request(Base):
     kam_cost_usd: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
     kam_timeline_months: Mapped[Optional[int]] = mapped_column(nullable=True)
     kam_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    exhibit_batch_start: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    exhibit_batch_end: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    tentative_approval_months: Mapped[Optional[int]] = mapped_column(nullable=True)
+    assembly_machine_qualification: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    assembly_qualification_qty: Mapped[Optional[int]] = mapped_column(nullable=True)
+    assembly_qualification_date: Mapped[Optional[dt.date]] = mapped_column(Date, nullable=True)
+    platform_design_verification_request: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    sample_request: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    sample_request_qty: Mapped[Optional[int]] = mapped_column(nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
 
     sku_rows: Mapped[list["SkuRow"]] = relationship(back_populates="request", order_by="SkuRow.id")
@@ -93,6 +102,7 @@ class SkuRow(Base):
     strength: Mapped[str] = mapped_column(String(50), nullable=False)
     cartridge: Mapped[str] = mapped_column(String(50), nullable=False)
     fill_ml: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
+    batch_size_l: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
 
     request: Mapped["Request"] = relationship(back_populates="sku_rows")
     service_selections: Mapped[list["ServiceSelection"]] = relationship(back_populates="sku_row")
