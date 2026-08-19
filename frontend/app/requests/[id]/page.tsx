@@ -17,6 +17,7 @@ import {
   postMessage,
   selectOption,
   submitRequest,
+  updatePlatformOptions,
   updateRequestStep1,
   updateServices,
 } from "@/lib/api";
@@ -79,6 +80,20 @@ export default function RequestWizardPage() {
   const [optionsError, setOptionsError] = useState("");
   const [selecting, setSelecting] = useState(false);
 
+  const [exhibitBatchStart, setExhibitBatchStart] = useState("");
+  const [exhibitBatchEnd, setExhibitBatchEnd] = useState("");
+  const [tentativeApprovalMonths, setTentativeApprovalMonths] = useState<number | "">("");
+  const [assemblyQualification, setAssemblyQualification] = useState<boolean | null>(null);
+  const [assemblyQualificationQty, setAssemblyQualificationQty] = useState<number | "">("");
+  const [assemblyQualificationDate, setAssemblyQualificationDate] = useState("");
+  const [pdvr, setPdvr] = useState<boolean | null>(null);
+  const [sampleRequest, setSampleRequest] = useState<boolean | null>(null);
+  const [sampleRequestQty, setSampleRequestQty] = useState<number | "">("");
+  const [batchSizes, setBatchSizes] = useState<Record<number, number | "">>({});
+  const [savingPlatformOptions, setSavingPlatformOptions] = useState(false);
+  const [platformOptionsError, setPlatformOptionsError] = useState("");
+  const [platformOptionsSaved, setPlatformOptionsSaved] = useState(false);
+
   const [serviceRows, setServiceRows] = useState<
     Record<number, { standard_dv: boolean; threshold: boolean; ifu: boolean; human_factor: boolean }>
   >({});
@@ -105,6 +120,16 @@ export default function RequestWizardPage() {
         setViscosityVal(req.viscosity_val ?? "");
         setDifferentiated(req.differentiated);
         setDevice(req.device);
+        setExhibitBatchStart(req.exhibit_batch_start ?? "");
+        setExhibitBatchEnd(req.exhibit_batch_end ?? "");
+        setTentativeApprovalMonths(req.tentative_approval_months ?? "");
+        setAssemblyQualification(req.assembly_machine_qualification);
+        setAssemblyQualificationQty(req.assembly_qualification_qty ?? "");
+        setAssemblyQualificationDate(req.assembly_qualification_date ?? "");
+        setPdvr(req.platform_design_verification_request);
+        setSampleRequest(req.sample_request);
+        setSampleRequestQty(req.sample_request_qty ?? "");
+        setBatchSizes(Object.fromEntries(req.sku_rows.map((r) => [r.id, r.batch_size_l ?? ""])));
         if (req.chosen_option != null && req.status === "Draft") setStep("options");
       })
       .catch((err) => {
@@ -277,6 +302,38 @@ export default function RequestWizardPage() {
       setOptionsError(err instanceof ApiError ? err.message : "We couldn't select that option — try again.");
     } finally {
       setSelecting(false);
+    }
+  }
+
+  async function handleSavePlatformOptions() {
+    if (!token) return;
+    setSavingPlatformOptions(true);
+    setPlatformOptionsError("");
+    setPlatformOptionsSaved(false);
+    try {
+      const updated = await updatePlatformOptions(token, requestId, {
+        exhibit_batch_start: exhibitBatchStart || null,
+        exhibit_batch_end: exhibitBatchEnd || null,
+        tentative_approval_months: tentativeApprovalMonths === "" ? null : Number(tentativeApprovalMonths),
+        assembly_machine_qualification: assemblyQualification,
+        assembly_qualification_qty: assemblyQualificationQty === "" ? null : Number(assemblyQualificationQty),
+        assembly_qualification_date: assemblyQualificationDate || null,
+        platform_design_verification_request: pdvr,
+        sample_request: sampleRequest,
+        sample_request_qty: sampleRequestQty === "" ? null : Number(sampleRequestQty),
+        sku_batch_sizes: Object.entries(batchSizes).map(([id, v]) => ({
+          sku_row_id: Number(id),
+          batch_size_l: v === "" ? null : Number(v),
+        })),
+      });
+      setDetail(updated);
+      setPlatformOptionsSaved(true);
+    } catch (err) {
+      setPlatformOptionsError(
+        err instanceof ApiError ? err.message : "We couldn't save those details — try again."
+      );
+    } finally {
+      setSavingPlatformOptions(false);
     }
   }
 
@@ -696,16 +753,205 @@ export default function RequestWizardPage() {
             )}
 
             {step === "options" && detail && (
-              <StepOptions
-                options={options}
-                loading={optionsLoading}
-                error={optionsError}
-                onDismissError={() => setOptionsError("")}
-                chosenOption={detail.chosen_option}
-                isDraft={isDraft}
-                selecting={selecting}
-                onSelect={handleSelectOption}
-              />
+              <>
+                <Card>
+                  <h2 className="mb-4 font-display text-base font-semibold text-forest-900">
+                    Batch & qualification
+                  </h2>
+                  <div className="flex flex-col gap-6">
+                    <div>
+                      <h3 className="mb-2 font-body text-sm font-medium text-ink-700">Batch size per SKU</h3>
+                      <div className="flex flex-col gap-2">
+                        {detail.sku_rows.map((row) => {
+                          const val = batchSizes[row.id] ?? "";
+                          const pens =
+                            val !== "" && row.fill_ml > 0
+                              ? Math.round((Number(val) * 1000) / row.fill_ml)
+                              : null;
+                          return (
+                            <div key={row.id} className="flex flex-wrap items-end gap-3">
+                              <span className="w-20 font-body text-sm text-ink-700">{row.strength}</span>
+                              <div className="w-36">
+                                <TextField
+                                  label="Batch size (L)"
+                                  name={`batch-size-${row.id}`}
+                                  type="number"
+                                  value={val === "" ? "" : String(val)}
+                                  onChange={
+                                    isDraft
+                                      ? (v) => setBatchSizes((prev) => ({ ...prev, [row.id]: v === "" ? "" : Number(v) }))
+                                      : () => {}
+                                  }
+                                />
+                              </div>
+                              <span className="font-body text-xs text-ink-700/70">
+                                {pens != null ? `≈ ${pens} pens` : "—"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <TextField
+                        label="Tentative exhibit batch — start"
+                        name="exhibit-batch-start"
+                        type="date"
+                        value={exhibitBatchStart}
+                        onChange={isDraft ? setExhibitBatchStart : () => {}}
+                      />
+                      <TextField
+                        label="Tentative exhibit batch — end"
+                        name="exhibit-batch-end"
+                        type="date"
+                        value={exhibitBatchEnd}
+                        onChange={isDraft ? setExhibitBatchEnd : () => {}}
+                      />
+                      <div>
+                        <TextField
+                          label="Tentative approval (months)"
+                          name="tentative-approval-months"
+                          type="number"
+                          value={tentativeApprovalMonths === "" ? "" : String(tentativeApprovalMonths)}
+                          onChange={
+                            isDraft ? (v) => setTentativeApprovalMonths(v === "" ? "" : Number(v)) : () => {}
+                          }
+                        />
+                        <p className="mt-1 font-body text-xs text-ink-700/60">
+                          Leave blank — your KAM can fill this in later.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="mb-2 font-body text-sm font-medium text-ink-700">
+                        Assembly machine qualification
+                      </h3>
+                      <div className="flex gap-2">
+                        {([["Yes", true], ["No", false]] as const).map(([label, val]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            disabled={!isDraft}
+                            onClick={() => isDraft && setAssemblyQualification(val)}
+                            className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              assemblyQualification === val
+                                ? "border-forest-600 bg-forest-600/10 text-forest-900"
+                                : "border-ink-700/15 text-ink-700/70 hover:border-forest-600/40"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {assemblyQualification && (
+                        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <TextField
+                            label="Qty"
+                            name="assembly-qualification-qty"
+                            type="number"
+                            value={assemblyQualificationQty === "" ? "" : String(assemblyQualificationQty)}
+                            onChange={
+                              isDraft
+                                ? (v) => setAssemblyQualificationQty(v === "" ? "" : Number(v))
+                                : () => {}
+                            }
+                          />
+                          <TextField
+                            label="Tentative date"
+                            name="assembly-qualification-date"
+                            type="date"
+                            value={assemblyQualificationDate}
+                            onChange={isDraft ? setAssemblyQualificationDate : () => {}}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="mb-2 font-body text-sm font-medium text-ink-700">
+                        Platform Design Verification Request
+                      </h3>
+                      <div className="flex gap-2">
+                        {([["Yes", true], ["No", false]] as const).map(([label, val]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            disabled={!isDraft}
+                            onClick={() => isDraft && setPdvr(val)}
+                            className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              pdvr === val
+                                ? "border-forest-600 bg-forest-600/10 text-forest-900"
+                                : "border-ink-700/15 text-ink-700/70 hover:border-forest-600/40"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="mb-2 font-body text-sm font-medium text-ink-700">Sample request</h3>
+                      <div className="flex gap-2">
+                        {([["Yes", true], ["No", false]] as const).map(([label, val]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            disabled={!isDraft}
+                            onClick={() => isDraft && setSampleRequest(val)}
+                            className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              sampleRequest === val
+                                ? "border-forest-600 bg-forest-600/10 text-forest-900"
+                                : "border-ink-700/15 text-ink-700/70 hover:border-forest-600/40"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {sampleRequest && (
+                        <div className="mt-3 w-40">
+                          <TextField
+                            label="Qty"
+                            name="sample-request-qty"
+                            type="number"
+                            value={sampleRequestQty === "" ? "" : String(sampleRequestQty)}
+                            onChange={isDraft ? (v) => setSampleRequestQty(v === "" ? "" : Number(v)) : () => {}}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {platformOptionsError && (
+                      <Banner message={platformOptionsError} onDismiss={() => setPlatformOptionsError("")} />
+                    )}
+                    {isDraft && (
+                      <div>
+                        <Button
+                          variant="secondary"
+                          loading={savingPlatformOptions}
+                          onClick={handleSavePlatformOptions}
+                        >
+                          {platformOptionsSaved ? "Saved ✓" : "Save details"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                <StepOptions
+                  options={options}
+                  loading={optionsLoading}
+                  error={optionsError}
+                  onDismissError={() => setOptionsError("")}
+                  chosenOption={detail.chosen_option}
+                  isDraft={isDraft}
+                  selecting={selecting}
+                  onSelect={handleSelectOption}
+                />
+              </>
             )}
             {step === "cost" && detail && (
               <StepCost
