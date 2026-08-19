@@ -305,5 +305,6 @@ class ReferenceViscosityLookupIn(BaseModel):
 class ReferenceViscosityLookupOut(BaseModel):
     found: bool
     brand: str
-    visc_val: Optional[float] = None
-    citation: Optional[str] = None
+    visc_val_low: Optional[float] = None
+    visc_val_high: Optional[float] = None
+    citations: list[str] = []

@@ -146,15 +146,33 @@ def test_extract_strengths_with_claude_maps_fill_to_cartridge_deterministically(
     assert result.citation == "FDA label 209637"
 
 
-def test_synthesize_viscosity_with_claude_requires_clean_number():
+def test_synthesize_viscosity_with_claude_requires_clean_range():
     svc = LookupService(settings=_svc_with_key_settings())
-    svc._anthropic_client = _FakeAnthropicClient({"visc_val": 1.4, "citation": "DailyMed SmPC"})
+    svc._anthropic_client = _FakeAnthropicClient({
+        "visc_val_low": 1.1, "visc_val_high": 1.8,
+        "citations": ["DailyMed SmPC", "Journal of Pharm Sciences 2019"],
+    })
     result = svc._synthesize_viscosity_with_claude("Ozempic", "Semaglutide", [{"title": "t", "content": "c"}])
-    assert result == ViscosityLookupResult(found=True, visc_val=1.4, citation="DailyMed SmPC")
+    assert result == ViscosityLookupResult(
+        found=True, visc_val_low=1.1, visc_val_high=1.8,
+        citations=["DailyMed SmPC", "Journal of Pharm Sciences 2019"],
+    )
 
 
 def test_synthesize_viscosity_with_claude_null_value_is_not_found():
     svc = LookupService(settings=_svc_with_key_settings())
-    svc._anthropic_client = _FakeAnthropicClient({"visc_val": None, "citation": "qualitative only"})
+    svc._anthropic_client = _FakeAnthropicClient({
+        "visc_val_low": None, "visc_val_high": None, "citations": ["qualitative only"],
+    })
     result = svc._synthesize_viscosity_with_claude("Ozempic", "Semaglutide", [{"title": "t", "content": "c"}])
     assert result.found is False
+
+
+def test_synthesize_viscosity_with_claude_caps_citations_at_ten():
+    svc = LookupService(settings=_svc_with_key_settings())
+    svc._anthropic_client = _FakeAnthropicClient({
+        "visc_val_low": 1.0, "visc_val_high": 2.0,
+        "citations": [f"source {i}" for i in range(15)],
+    })
+    result = svc._synthesize_viscosity_with_claude("Ozempic", "Semaglutide", [{"title": "t", "content": "c"}])
+    assert len(result.citations) == 10

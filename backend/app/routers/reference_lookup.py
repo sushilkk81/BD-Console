@@ -56,15 +56,17 @@ def _create_base_row_if_missing(db: Session, brand: str, molecule: str | None, d
         db.rollback()  # created concurrently by another request — nothing more to do
 
 
-def _create_viscosity_base_row_if_missing(db: Session, brand: str, visc_val: float,
-                                           citation: str | None) -> None:
+def _create_viscosity_base_row_if_missing(db: Session, brand: str, visc_val_low: float,
+                                           visc_val_high: float, citations: list[str]) -> None:
     """Persist a new ReferenceProduct row for a brand new to the DB, keyed off a viscosity
     lookup hit — mirrors _create_base_row_if_missing's placeholder pattern."""
     if db.get(ReferenceProduct, brand) is not None:
         return
     row = ReferenceProduct(
-        brand=brand[:100], molecule="", device="", dose="", visc="", visc_val=visc_val,
-        cartridge="3 mL", strengths=[], visc_ref=(citation or "")[:300],
+        brand=brand[:100], molecule="", device="", dose="", visc="", visc_val=visc_val_high,
+        visc_val_low=visc_val_low, visc_val_high=visc_val_high,
+        visc_citations=[c[:300] for c in citations],
+        cartridge="3 mL", strengths=[], visc_ref=(citations[0][:300] if citations else ""),
         mech_drive="", mech_dose="", mech_label="", ob_ref="", ob_claims=[],
         presentations={}, presentations_ref="",
     )
@@ -111,9 +113,18 @@ def lookup_viscosity(payload: ReferenceViscosityLookupIn, db: Session = Depends(
                       current_user: User = Depends(get_current_user),
                       svc: LookupService = Depends(get_lookup_service)):
     base = db.get(ReferenceProduct, payload.brand)
-    if base is not None and base.visc_val:
+    if base is not None and base.visc_val_high is not None:
         return ReferenceViscosityLookupOut(
-            found=True, brand=payload.brand, visc_val=float(base.visc_val), citation=base.visc_ref,
+            found=True, brand=payload.brand,
+            visc_val_low=float(base.visc_val_low), visc_val_high=float(base.visc_val_high),
+            citations=base.visc_citations or [],
+        )
+    if base is not None and base.visc_val:
+        # legacy curated row — has only the original single visc_val/visc_ref pair
+        return ReferenceViscosityLookupOut(
+            found=True, brand=payload.brand,
+            visc_val_low=float(base.visc_val), visc_val_high=float(base.visc_val),
+            citations=[base.visc_ref] if base.visc_ref else [],
         )
 
     result = svc.lookup_viscosity(payload.brand, payload.molecule)
@@ -121,12 +132,18 @@ def lookup_viscosity(payload: ReferenceViscosityLookupIn, db: Session = Depends(
         return ReferenceViscosityLookupOut(found=False, brand=payload.brand)
 
     if base is not None:
-        base.visc_val = result.visc_val
-        base.visc_ref = (result.citation or "")[:300]
+        base.visc_val = result.visc_val_high
+        base.visc_val_low = result.visc_val_low
+        base.visc_val_high = result.visc_val_high
+        base.visc_citations = [c[:300] for c in result.citations]
+        base.visc_ref = (result.citations[0][:300] if result.citations else "")
         db.commit()
     else:
-        _create_viscosity_base_row_if_missing(db, payload.brand, result.visc_val, result.citation)
+        _create_viscosity_base_row_if_missing(db, payload.brand, result.visc_val_low,
+                                               result.visc_val_high, result.citations)
 
     return ReferenceViscosityLookupOut(
-        found=True, brand=payload.brand, visc_val=result.visc_val, citation=result.citation,
+        found=True, brand=payload.brand,
+        visc_val_low=result.visc_val_low, visc_val_high=result.visc_val_high,
+        citations=result.citations,
     )

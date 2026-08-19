@@ -182,7 +182,7 @@ def test_viscosity_lookup_hit_persists_visc_val(client):
     db.close()
 
     fake = FakeLookupService(viscosity_result=ViscosityLookupResult(
-        found=True, visc_val=2.3, citation="DailyMed SmPC",
+        found=True, visc_val_low=2.0, visc_val_high=2.3, citations=["DailyMed SmPC"],
     ))
     app.dependency_overrides[get_lookup_service] = lambda: fake
 
@@ -192,18 +192,23 @@ def test_viscosity_lookup_hit_persists_visc_val(client):
     )
     assert resp.status_code == 200
     assert resp.json()["found"] is True
-    assert resp.json()["visc_val"] == 2.3
+    assert resp.json()["visc_val_low"] == 2.0
+    assert resp.json()["visc_val_high"] == 2.3
+    assert resp.json()["citations"] == ["DailyMed SmPC"]
 
     db = next(app.dependency_overrides[get_db]())
     base = db.get(ReferenceProduct, "AnotherNewDrug")
-    assert float(base.visc_val) == 2.3
+    assert float(base.visc_val_low) == 2.0
+    assert float(base.visc_val_high) == 2.3
+    assert float(base.visc_val) == 2.3  # matching engine gets the conservative (high) end
     db.close()
 
 
 def test_viscosity_lookup_hit_for_brand_new_to_db_persists_and_caches(client):
     token = _login(client)
     fake = FakeLookupService(viscosity_result=ViscosityLookupResult(
-        found=True, visc_val=4.1, citation="Some literature source",
+        found=True, visc_val_low=3.5, visc_val_high=4.1,
+        citations=["Some literature source", "Second source"],
     ))
     app.dependency_overrides[get_lookup_service] = lambda: fake
 
@@ -213,7 +218,9 @@ def test_viscosity_lookup_hit_for_brand_new_to_db_persists_and_caches(client):
     )
     assert resp.status_code == 200
     assert resp.json()["found"] is True
-    assert resp.json()["visc_val"] == 4.1
+    assert resp.json()["visc_val_low"] == 3.5
+    assert resp.json()["visc_val_high"] == 4.1
+    assert resp.json()["citations"] == ["Some literature source", "Second source"]
 
     from app.models import ReferenceProduct
     db = next(app.dependency_overrides[get_db]())
@@ -221,6 +228,7 @@ def test_viscosity_lookup_hit_for_brand_new_to_db_persists_and_caches(client):
     assert base is not None
     assert float(base.visc_val) == 4.1
     assert base.visc_ref == "Some literature source"
+    assert base.visc_citations == ["Some literature source", "Second source"]
     db.close()
 
     # second call must be served from the cache — the fake would raise/return found=False
@@ -230,4 +238,34 @@ def test_viscosity_lookup_hit_for_brand_new_to_db_persists_and_caches(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp2.json()["found"] is True
-    assert resp2.json()["visc_val"] == 4.1
+    assert resp2.json()["visc_val_low"] == 3.5
+    assert resp2.json()["visc_val_high"] == 4.1
+
+
+def test_viscosity_lookup_falls_back_to_legacy_single_value_row(client):
+    """A ReferenceProduct seeded before this feature (e.g. ported curated data) only has the
+    original single visc_val/visc_ref pair — the endpoint must still serve it as a degenerate
+    (low == high) range instead of treating it as a cache miss."""
+    token = _login(client)
+    from app.models import ReferenceProduct
+    db = next(app.dependency_overrides[get_db]())
+    db.add(ReferenceProduct(
+        brand="CuratedLegacyDrug", molecule="Somemab", device="Pen Injector", dose="variable",
+        visc="water", visc_val=1.4, cartridge="3 mL", strengths=[], visc_ref="Original curated ref",
+        mech_drive="", mech_dose="", mech_label="", ob_ref="", ob_claims=[],
+        presentations={}, presentations_ref="",
+    ))
+    db.commit()
+    db.close()
+
+    app.dependency_overrides[get_lookup_service] = lambda: FakeLookupService()  # would be found=False
+    resp = client.post(
+        "/reference-lookup/viscosity", json={"brand": "CuratedLegacyDrug", "molecule": "Somemab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["visc_val_low"] == 1.4
+    assert body["visc_val_high"] == 1.4
+    assert body["citations"] == ["Original curated ref"]

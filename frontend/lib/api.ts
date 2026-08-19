@@ -168,8 +168,9 @@ export type StrengthLookup = {
 export type ViscosityLookup = {
   found: boolean;
   brand: string;
-  visc_val: number | null;
-  citation: string | null;
+  visc_val_low: number | null;
+  visc_val_high: number | null;
+  citations: string[];
 };
 
 export async function lookupStrengths(token: string, brand: string, market: string): Promise<StrengthLookup> {

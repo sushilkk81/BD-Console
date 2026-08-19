@@ -42,8 +42,9 @@ class StrengthLookupResult:
 @dataclass
 class ViscosityLookupResult:
     found: bool
-    visc_val: float | None = None
-    citation: str | None = None
+    visc_val_low: float | None = None
+    visc_val_high: float | None = None
+    citations: list[str] = field(default_factory=list)
 
 
 class LookupService:
@@ -202,39 +203,52 @@ class LookupService:
         )
         tool = {
             "name": "record_viscosity",
-            "description": "Record a synthesized viscosity value from literature search results.",
+            "description": "Record a synthesized viscosity range from literature search results.",
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "visc_val": {"type": ["number", "null"]},
-                    "citation": {"type": "string"},
+                    "visc_val_low": {"type": ["number", "null"]},
+                    "visc_val_high": {"type": ["number", "null"]},
+                    "citations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 10,
+                    },
                 },
-                "required": ["visc_val", "citation"],
+                "required": ["visc_val_low", "visc_val_high", "citations"],
                 "additionalProperties": False,
             },
             "strict": True,
         }
         message = self.anthropic_client.messages.create(
             model=ANTHROPIC_MODEL,
-            max_tokens=512,
+            max_tokens=768,
             tools=[tool],
             tool_choice={"type": "tool", "name": "record_viscosity"},
             messages=[{
                 "role": "user",
                 "content": (
-                    f"Based on this literature search on the viscosity of {molecule or brand} "
-                    f"injectable formulations, give a single representative viscosity value in cP "
-                    f"if the literature supports one clean figure; otherwise return null. "
-                    f"Cite your source.\n\n{source_text}"
+                    f"Based on this literature search across up to 10 sources on the viscosity of "
+                    f"{molecule or brand} injectable formulations, give the lowest and highest "
+                    f"representative viscosity values in cP supported by the literature; if nothing "
+                    f"usable is found, return null for both. Cite every distinct source you drew a "
+                    f"value from (short strings, e.g. publication + identifier), up to 10 "
+                    f"citations.\n\n{source_text}"
                 ),
             }],
         )
         tool_use = next(b for b in message.content if b.type == "tool_use")
         data = tool_use.input
-        visc_val = data.get("visc_val")
-        if visc_val is None:
+        visc_val_low = data.get("visc_val_low")
+        visc_val_high = data.get("visc_val_high")
+        if visc_val_low is None or visc_val_high is None:
             return ViscosityLookupResult(found=False)
-        return ViscosityLookupResult(found=True, visc_val=float(visc_val), citation=data.get("citation"))
+        return ViscosityLookupResult(
+            found=True,
+            visc_val_low=float(visc_val_low),
+            visc_val_high=float(visc_val_high),
+            citations=[c for c in data.get("citations", []) if c][:10],
+        )
 
 
 def get_lookup_service() -> LookupService:

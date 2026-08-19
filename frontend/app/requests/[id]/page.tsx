@@ -65,7 +65,8 @@ export default function RequestWizardPage() {
   const [saveError, setSaveError] = useState("");
   const [strengthLookupLoading, setStrengthLookupLoading] = useState(false);
   const [strengthLookupNotFound, setStrengthLookupNotFound] = useState(false);
-  const [viscosityLookup, setViscosityLookup] = useState<{ visc_val: number; citation: string | null } | null>(null);
+  const [viscosityLookup, setViscosityLookup] =
+    useState<{ visc_val_low: number; visc_val_high: number; citations: string[] } | null>(null);
   const [viscosityLookupLoading, setViscosityLookupLoading] = useState(false);
   const [viscosityLookupNotFound, setViscosityLookupNotFound] = useState(false);
   const [lookedUpBrandMarket, setLookedUpBrandMarket] = useState<string | null>(null);
@@ -210,8 +211,12 @@ export default function RequestWizardPage() {
     setViscosityLookup(null);
     try {
       const result = await lookupViscosity(token, brand, currentRef?.molecule);
-      if (result.found && result.visc_val != null) {
-        setViscosityLookup({ visc_val: result.visc_val, citation: result.citation });
+      if (result.found && result.visc_val_low != null && result.visc_val_high != null) {
+        setViscosityLookup({
+          visc_val_low: result.visc_val_low,
+          visc_val_high: result.visc_val_high,
+          citations: result.citations,
+        });
       } else {
         setViscosityLookupNotFound(true);
       }
@@ -535,22 +540,38 @@ export default function RequestWizardPage() {
                     )}
                   </div>
                   {viscosityLookup && (
-                    <p className="mt-2 font-body text-xs text-ink-700/70">
-                      Literature suggests <b>{viscosityLookup.visc_val} cP</b>.{" "}
-                      <button
-                        type="button"
-                        className="font-medium text-forest-600 underline-offset-2 hover:underline"
-                        onClick={() => setViscosityVal(viscosityLookup.visc_val)}
-                      >
-                        Use this value
-                      </button>
-                      {viscosityLookup.citation && (
-                        <>
-                          {" "}
-                          — <i>*{viscosityLookup.citation}</i>
-                        </>
+                    <div className="mt-2 font-body text-xs text-ink-700/70">
+                      <p>
+                        Literature suggests{" "}
+                        <b>
+                          {viscosityLookup.visc_val_low}–{viscosityLookup.visc_val_high} cP
+                        </b>{" "}
+                        ({viscosityLookup.citations.length || "no"} source
+                        {viscosityLookup.citations.length === 1 ? "" : "s"}).{" "}
+                        <button
+                          type="button"
+                          className="font-medium text-forest-600 underline-offset-2 hover:underline"
+                          onClick={() =>
+                            setViscosityVal(
+                              Math.round(
+                                ((viscosityLookup.visc_val_low + viscosityLookup.visc_val_high) / 2) * 100
+                              ) / 100
+                            )
+                          }
+                        >
+                          Use this value
+                        </button>
+                      </p>
+                      {viscosityLookup.citations.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                          {viscosityLookup.citations.map((c, i) => (
+                            <li key={i}>
+                              <i>*{c}</i>
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                    </p>
+                    </div>
                   )}
                   {viscosityLookupNotFound && (
                     <p className="mt-2 font-body text-xs text-ink-700/70">
