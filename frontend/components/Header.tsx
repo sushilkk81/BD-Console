@@ -150,13 +150,13 @@ export function Header({ userName, role, token }: { userName?: string; role?: Ro
 
   return (
     <header className="border-b border-ink-700/10 bg-white">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
+      <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:flex-nowrap sm:px-6">
         <div className="flex items-center gap-3">
           <Image src="/shaily-logo.png" alt="Shaily" width={140} height={37} priority />
           <span className="font-display text-base font-medium text-forest-900">BD Console</span>
         </div>
         {links.length > 0 && (
-          <nav className="flex flex-wrap gap-3 sm:gap-5" aria-label="Primary">
+          <nav className="order-3 flex w-full flex-wrap gap-3 sm:order-none sm:w-auto sm:gap-5" aria-label="Primary">
             {links.map((l) => (
               <Link
                 key={l.href}
