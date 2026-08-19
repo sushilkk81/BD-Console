@@ -11,6 +11,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+import anthropic
+import httpx
+
 from app.config import Settings, get_settings
 
 logger = logging.getLogger("external_lookup")
@@ -52,6 +55,20 @@ class LookupService:
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._http_client: httpx.Client | None = None
+        self._anthropic_client: "anthropic.Anthropic | None" = None
+
+    @property
+    def http_client(self) -> httpx.Client:
+        if self._http_client is None:
+            self._http_client = httpx.Client(timeout=HTTP_TIMEOUT_SECONDS)
+        return self._http_client
+
+    @property
+    def anthropic_client(self) -> "anthropic.Anthropic":
+        if self._anthropic_client is None:
+            self._anthropic_client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
+        return self._anthropic_client
 
     def lookup_strengths(self, brand: str, market: str) -> StrengthLookupResult:
         try:
@@ -86,20 +103,138 @@ class LookupService:
     # --- internal helpers (network/LLM calls — filled in in Task 4) ---
 
     def _fetch_fda_label(self, brand: str) -> dict | None:
-        raise NotImplementedError
+        resp = self.http_client.get(
+            FDA_LABEL_URL,
+            params={"search": f'openfda.brand_name:"{brand}" AND openfda.route:"SUBCUTANEOUS"', "limit": 1},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            return None
+        results = resp.json().get("results", [])
+        return results[0] if results else None
 
     def _search_tavily(self, query: str) -> list[dict]:
-        raise NotImplementedError
+        resp = self.http_client.post(
+            TAVILY_SEARCH_URL,
+            json={"api_key": self.settings.tavily_api_key, "query": query, "max_results": 10},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            return []
+        return resp.json().get("results", [])
 
     def _extract_strengths_with_claude(
         self, brand: str, label: dict | None, search_results: list[dict]
     ) -> StrengthLookupResult:
-        raise NotImplementedError
+        source_text = (
+            (label or {}).get("dosage_forms_and_strengths", "")
+            or "\n".join(r.get("content", "") for r in search_results)
+        )
+        tool = {
+            "name": "record_strengths",
+            "description": "Record the extracted strengths and presentation for a drug product.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "molecule": {"type": "string"},
+                    "device": {"type": ["string", "null"]},
+                    "strengths": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "strength": {"type": "string"},
+                                "fill_ml": {"type": "number"},
+                            },
+                            "required": ["strength", "fill_ml"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "citation": {"type": "string"},
+                },
+                "required": ["molecule", "strengths", "citation"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        }
+        message = self.anthropic_client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=1024,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": "record_strengths"},
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Extract every strength and its fill volume (in mL) for the drug product "
+                    f"'{brand}' from this label/reference text:\n\n{source_text}"
+                ),
+            }],
+        )
+        tool_use = next(b for b in message.content if b.type == "tool_use")
+        data = tool_use.input
+        strengths = [
+            {
+                "strength": s["strength"],
+                "cartridge": cartridge_for_fill(float(s["fill_ml"])),
+                "fill_ml": float(s["fill_ml"]),
+            }
+            for s in data.get("strengths", [])
+        ]
+        if not strengths:
+            return StrengthLookupResult(found=False)
+        return StrengthLookupResult(
+            found=True,
+            molecule=data.get("molecule"),
+            device=data.get("device"),
+            strengths=strengths,
+            citation=data.get("citation"),
+        )
 
     def _synthesize_viscosity_with_claude(
         self, brand: str, molecule: str | None, search_results: list[dict]
     ) -> ViscosityLookupResult:
-        raise NotImplementedError
+        source_text = "\n\n".join(
+            f"{r.get('title', '')}\n{r.get('content', '')}" for r in search_results
+        )
+        tool = {
+            "name": "record_viscosity",
+            "description": "Record a synthesized viscosity value from literature search results.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "visc_val": {"type": ["number", "null"]},
+                    "citation": {"type": "string"},
+                },
+                "required": ["visc_val", "citation"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        }
+        message = self.anthropic_client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=512,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": "record_viscosity"},
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Based on this literature search on the viscosity of {molecule or brand} "
+                    f"injectable formulations, give a single representative viscosity value in cP "
+                    f"if the literature supports one clean figure; otherwise return null. "
+                    f"Cite your source.\n\n{source_text}"
+                ),
+            }],
+        )
+        tool_use = next(b for b in message.content if b.type == "tool_use")
+        data = tool_use.input
+        visc_val = data.get("visc_val")
+        if visc_val is None:
+            return ViscosityLookupResult(found=False)
+        return ViscosityLookupResult(found=True, visc_val=float(visc_val), citation=data.get("citation"))
 
 
 def get_lookup_service() -> LookupService:
