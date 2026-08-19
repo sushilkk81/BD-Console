@@ -278,8 +278,8 @@ class RequestCountOut(BaseModel):
 
 
 class ReferenceStrengthLookupIn(BaseModel):
-    brand: str
-    market: str
+    brand: str = Field(max_length=100)
+    market: str = Field(max_length=50)
 
 
 class LookedUpStrength(BaseModel):
@@ -298,7 +298,7 @@ class ReferenceStrengthLookupOut(BaseModel):
 
 
 class ReferenceViscosityLookupIn(BaseModel):
-    brand: str
+    brand: str = Field(max_length=100)
     molecule: Optional[str] = None
 
 

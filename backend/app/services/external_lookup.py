@@ -72,6 +72,8 @@ class LookupService:
 
     def lookup_strengths(self, brand: str, market: str) -> StrengthLookupResult:
         try:
+            if not self.settings.anthropic_api_key:
+                return StrengthLookupResult(found=False)
             label = self._fetch_fda_label(brand)
             search_results: list[dict] = []
             if label is None:
@@ -80,8 +82,6 @@ class LookupService:
                 search_results = self._search_tavily(f"{brand} manufacturer prescribing information")
                 if not search_results:
                     return StrengthLookupResult(found=False)
-            if not self.settings.anthropic_api_key:
-                return StrengthLookupResult(found=False)
             return self._extract_strengths_with_claude(brand, label, search_results)
         except Exception:
             logger.warning("lookup_strengths failed for brand=%r market=%r", brand, market, exc_info=True)

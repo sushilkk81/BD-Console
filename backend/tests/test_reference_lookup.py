@@ -132,6 +132,31 @@ def test_strengths_lookup_hit_does_not_overwrite_existing_base_row(client, seed_
     db.close()
 
 
+def test_strengths_lookup_cache_hit_returns_persisted_citation(client):
+    token = _login(client)
+    fake = FakeLookupService(strengths_result=StrengthLookupResult(
+        found=True, molecule="Semaglutide", device="Pen Injector",
+        strengths=[{"strength": "0.5 mg", "cartridge": "1.5 mL", "fill_ml": 1.5}],
+        citation="FDA label 209637",
+    ))
+    app.dependency_overrides[get_lookup_service] = lambda: fake
+
+    resp = client.post(
+        "/reference-lookup/strengths", json={"brand": "CitationBrand", "market": "EU"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.json()["citation"] == "FDA label 209637"
+
+    # cache hit — citation must survive the round-trip, not come back null
+    app.dependency_overrides[get_lookup_service] = lambda: FakeLookupService()
+    resp2 = client.post(
+        "/reference-lookup/strengths", json={"brand": "CitationBrand", "market": "EU"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp2.json()["found"] is True
+    assert resp2.json()["citation"] == "FDA label 209637"
+
+
 def test_viscosity_lookup_miss_returns_found_false(client):
     token = _login(client)
     app.dependency_overrides[get_lookup_service] = lambda: FakeLookupService()
@@ -173,3 +198,36 @@ def test_viscosity_lookup_hit_persists_visc_val(client):
     base = db.get(ReferenceProduct, "AnotherNewDrug")
     assert float(base.visc_val) == 2.3
     db.close()
+
+
+def test_viscosity_lookup_hit_for_brand_new_to_db_persists_and_caches(client):
+    token = _login(client)
+    fake = FakeLookupService(viscosity_result=ViscosityLookupResult(
+        found=True, visc_val=4.1, citation="Some literature source",
+    ))
+    app.dependency_overrides[get_lookup_service] = lambda: fake
+
+    resp = client.post(
+        "/reference-lookup/viscosity", json={"brand": "NeverSeenBrand", "molecule": "Somemab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["found"] is True
+    assert resp.json()["visc_val"] == 4.1
+
+    from app.models import ReferenceProduct
+    db = next(app.dependency_overrides[get_db]())
+    base = db.get(ReferenceProduct, "NeverSeenBrand")
+    assert base is not None
+    assert float(base.visc_val) == 4.1
+    assert base.visc_ref == "Some literature source"
+    db.close()
+
+    # second call must be served from the cache — the fake would raise/return found=False
+    app.dependency_overrides[get_lookup_service] = lambda: FakeLookupService()  # found=False if hit
+    resp2 = client.post(
+        "/reference-lookup/viscosity", json={"brand": "NeverSeenBrand", "molecule": "Somemab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp2.json()["found"] is True
+    assert resp2.json()["visc_val"] == 4.1

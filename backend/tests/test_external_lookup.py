@@ -19,7 +19,6 @@ def test_cartridge_for_fill_above_1_5ml():
 
 def test_lookup_strengths_no_key_configured_returns_not_found():
     svc = LookupService(settings=Settings(anthropic_api_key="", tavily_api_key=""))
-    svc._http_client = _FakeHTTPClient(fda_response=_FakeHTTPResponse({"results": []}))
     result = svc.lookup_strengths("Ozempic", "US")
     assert result.found is False
 
@@ -36,7 +35,7 @@ def test_get_lookup_service_returns_a_lookup_service():
 
 import httpx
 
-from app.services.external_lookup import LookupService, StrengthLookupResult, ViscosityLookupResult
+from app.services.external_lookup import LookupService, ViscosityLookupResult
 
 
 class _FakeHTTPResponse:
