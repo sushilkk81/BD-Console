@@ -47,6 +47,12 @@ def test_pageview_requires_customer_role(client):
     assert resp.status_code == 403
 
 
+def test_customer_visits_rejects_customer_role(client):
+    customer_token, _ = _login_customer(client, "anaya@pfizer.com")
+    resp = client.get("/customer-visits", headers=_auth(customer_token))
+    assert resp.status_code == 403
+
+
 def test_pageview_rejects_foreign_session_id(client):
     token, _ = _login_customer(client, "anaya@pfizer.com")
     resp = client.post("/activity/pageview", json={"session_id": "not-mine", "page": "/requests"},

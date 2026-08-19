@@ -47,6 +47,8 @@ function NotificationBell({ token }: { token: string }) {
     setOpen(false);
     try {
       await markNotificationRead(token, n.id);
+    } catch {
+      // navigation should proceed even if marking as read fails
     } finally {
       router.push(n.link_path);
     }

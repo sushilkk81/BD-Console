@@ -11,7 +11,12 @@ export function PageviewBeacon() {
     const sessionId = localStorage.getItem("bdconsole_session_id");
     const rawUser = localStorage.getItem("bdconsole_user");
     if (!token || !sessionId || !rawUser) return;
-    const user = JSON.parse(rawUser) as { role: string };
+    let user: { role: string };
+    try {
+      user = JSON.parse(rawUser) as { role: string };
+    } catch {
+      return;
+    }
     if (user.role !== "Customer") return;
     recordPageview(token, sessionId, pathname).catch(() => {
       // fire-and-forget — a beacon failure must never surface to the customer

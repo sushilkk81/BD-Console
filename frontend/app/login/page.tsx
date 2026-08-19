@@ -52,6 +52,8 @@ export default function LoginPage() {
       localStorage.setItem("bdconsole_user", JSON.stringify(result.user));
       if (result.session_id) {
         localStorage.setItem("bdconsole_session_id", result.session_id);
+      } else {
+        localStorage.removeItem("bdconsole_session_id");
       }
       router.push(LANDING[result.user.role as keyof typeof LANDING] ?? "/requests");
     } catch (err) {

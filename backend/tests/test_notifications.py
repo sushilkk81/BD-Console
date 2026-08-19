@@ -49,6 +49,12 @@ def test_notifications_requires_bd_manager_role(client):
     assert resp.status_code == 403
 
 
+def test_notifications_rejects_customer_role(client):
+    customer_token, _ = _login(client, "anaya@pfizer.com")
+    resp = client.get("/notifications", headers=_auth(customer_token))
+    assert resp.status_code == 403
+
+
 def test_notifications_scoped_to_recipient(client):
     mgr1_token, _ = _login(client, "priya@shaily.com", role="BD Manager")
     mgr2_token, _ = _login(client, "rahul@shaily.com", role="BD Manager")
