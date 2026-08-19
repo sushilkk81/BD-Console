@@ -68,6 +68,10 @@ export default function RequestWizardPage() {
   const [viscosityLookup, setViscosityLookup] = useState<{ visc_val: number; citation: string | null } | null>(null);
   const [viscosityLookupLoading, setViscosityLookupLoading] = useState(false);
   const [viscosityLookupNotFound, setViscosityLookupNotFound] = useState(false);
+  const [lookedUpBrandMarket, setLookedUpBrandMarket] = useState<string | null>(null);
+  const [liveLookupPresentations, setLiveLookupPresentations] = useState<
+    Record<string, { cartridge: string; fill_ml: number }>
+  >({});
 
   const [options, setOptions] = useState<PlatformOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(false);
@@ -129,6 +133,8 @@ export default function RequestWizardPage() {
       const existing = new Map(prev.map((r) => [r.strength, r]));
       return next.map((s) => {
         if (existing.has(s)) return existing.get(s)!;
+        const live = liveLookupPresentations[s];
+        if (live) return { strength: s, cartridge: live.cartridge, fill_ml: live.fill_ml };
         const cart = currentRef?.cartridge ?? "3 mL";
         return { strength: s, cartridge: cart, fill_ml: 1.5 };
       });
@@ -143,6 +149,8 @@ export default function RequestWizardPage() {
     setStrengthLookupNotFound(false);
     setViscosityLookup(null);
     setViscosityLookupNotFound(false);
+    setLookedUpBrandMarket(null);
+    setLiveLookupPresentations({});
   }
 
   function handleBrandChange(nextBrand: string) {
@@ -163,6 +171,14 @@ export default function RequestWizardPage() {
     try {
       const result = await lookupStrengths(token, brand, market);
       if (result.found) {
+        setLookedUpBrandMarket(`${brand}|${market}`);
+        setLiveLookupPresentations((prev) => {
+          const next = { ...prev };
+          for (const s of result.strengths) {
+            next[s.strength] = { cartridge: s.cartridge, fill_ml: s.fill_ml };
+          }
+          return next;
+        });
         setRefProducts((prev) => {
           const existing = prev.find((p) => p.brand === result.brand);
           const merged: ReferenceProduct = {
@@ -179,7 +195,8 @@ export default function RequestWizardPage() {
       } else {
         setStrengthLookupNotFound(true);
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       setStrengthLookupNotFound(true);
     } finally {
       setStrengthLookupLoading(false);
@@ -198,7 +215,8 @@ export default function RequestWizardPage() {
       } else {
         setViscosityLookupNotFound(true);
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       setViscosityLookupNotFound(true);
     } finally {
       setViscosityLookupLoading(false);
@@ -437,7 +455,7 @@ export default function RequestWizardPage() {
                       />
                     </div>
                   </div>
-                  {isDraft && brand && market && !currentRef && (
+                  {isDraft && brand && market && lookedUpBrandMarket !== `${brand}|${market}` && (
                     <div className="mt-2">
                       <Button
                         type="button"
@@ -445,7 +463,11 @@ export default function RequestWizardPage() {
                         loading={strengthLookupLoading}
                         onClick={handleLiveStrengthLookup}
                       >
-                        {strengthLookupLoading ? "Looking up…" : "🔍 Look up live"}
+                        {strengthLookupLoading
+                          ? "Looking up…"
+                          : currentRef
+                          ? "🔍 Refresh for this market"
+                          : "🔍 Look up live"}
                       </Button>
                       {strengthLookupNotFound && (
                         <p className="mt-2 font-body text-xs text-ink-700/70">
