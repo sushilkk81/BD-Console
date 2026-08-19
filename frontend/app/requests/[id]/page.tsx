@@ -284,10 +284,9 @@ export default function RequestWizardPage() {
   useEffect(() => {
     if (!detail) return;
     setBatchSizes((prev) => {
-      const validIds = new Set(detail.sku_rows.map((r) => r.id));
       const next: Record<number, number | ""> = {};
       for (const row of detail.sku_rows) {
-        next[row.id] = row.id in prev && validIds.has(row.id) ? prev[row.id] : row.batch_size_l ?? "";
+        next[row.id] = row.id in prev ? prev[row.id] : row.batch_size_l ?? "";
       }
       return next;
     });
@@ -793,7 +792,10 @@ export default function RequestWizardPage() {
                                   value={val === "" ? "" : String(val)}
                                   onChange={
                                     isDraft
-                                      ? (v) => setBatchSizes((prev) => ({ ...prev, [row.id]: v === "" ? "" : Number(v) }))
+                                      ? (v) => {
+                                          setBatchSizes((prev) => ({ ...prev, [row.id]: v === "" ? "" : Number(v) }));
+                                          setPlatformOptionsSaved(false);
+                                        }
                                       : () => {}
                                   }
                                 />
@@ -813,14 +815,28 @@ export default function RequestWizardPage() {
                         name="exhibit-batch-start"
                         type="date"
                         value={exhibitBatchStart}
-                        onChange={isDraft ? setExhibitBatchStart : () => {}}
+                        onChange={
+                          isDraft
+                            ? (v) => {
+                                setExhibitBatchStart(v);
+                                setPlatformOptionsSaved(false);
+                              }
+                            : () => {}
+                        }
                       />
                       <TextField
                         label="Tentative exhibit batch — end"
                         name="exhibit-batch-end"
                         type="date"
                         value={exhibitBatchEnd}
-                        onChange={isDraft ? setExhibitBatchEnd : () => {}}
+                        onChange={
+                          isDraft
+                            ? (v) => {
+                                setExhibitBatchEnd(v);
+                                setPlatformOptionsSaved(false);
+                              }
+                            : () => {}
+                        }
                       />
                       <div>
                         <TextField
@@ -829,7 +845,12 @@ export default function RequestWizardPage() {
                           type="number"
                           value={tentativeApprovalMonths === "" ? "" : String(tentativeApprovalMonths)}
                           onChange={
-                            isDraft ? (v) => setTentativeApprovalMonths(v === "" ? "" : Number(v)) : () => {}
+                            isDraft
+                              ? (v) => {
+                                  setTentativeApprovalMonths(v === "" ? "" : Number(v));
+                                  setPlatformOptionsSaved(false);
+                                }
+                              : () => {}
                           }
                         />
                         <p className="mt-1 font-body text-xs text-ink-700/60">
@@ -855,6 +876,7 @@ export default function RequestWizardPage() {
                                 setAssemblyQualificationQty("");
                                 setAssemblyQualificationDate("");
                               }
+                              setPlatformOptionsSaved(false);
                             }}
                             className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                               assemblyQualification === val
@@ -875,7 +897,10 @@ export default function RequestWizardPage() {
                             value={assemblyQualificationQty === "" ? "" : String(assemblyQualificationQty)}
                             onChange={
                               isDraft
-                                ? (v) => setAssemblyQualificationQty(v === "" ? "" : Number(v))
+                                ? (v) => {
+                                    setAssemblyQualificationQty(v === "" ? "" : Number(v));
+                                    setPlatformOptionsSaved(false);
+                                  }
                                 : () => {}
                             }
                           />
@@ -884,7 +909,14 @@ export default function RequestWizardPage() {
                             name="assembly-qualification-date"
                             type="date"
                             value={assemblyQualificationDate}
-                            onChange={isDraft ? setAssemblyQualificationDate : () => {}}
+                            onChange={
+                              isDraft
+                                ? (v) => {
+                                    setAssemblyQualificationDate(v);
+                                    setPlatformOptionsSaved(false);
+                                  }
+                                : () => {}
+                            }
                           />
                         </div>
                       )}
@@ -900,7 +932,11 @@ export default function RequestWizardPage() {
                             key={label}
                             type="button"
                             disabled={!isDraft}
-                            onClick={() => isDraft && setPdvr(val)}
+                            onClick={() => {
+                              if (!isDraft) return;
+                              setPdvr(val);
+                              setPlatformOptionsSaved(false);
+                            }}
                             className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                               pdvr === val
                                 ? "border-forest-600 bg-forest-600/10 text-forest-900"
@@ -925,6 +961,7 @@ export default function RequestWizardPage() {
                               if (!isDraft) return;
                               setSampleRequest(val);
                               if (!val) setSampleRequestQty("");
+                              setPlatformOptionsSaved(false);
                             }}
                             className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                               sampleRequest === val
@@ -943,7 +980,14 @@ export default function RequestWizardPage() {
                             name="sample-request-qty"
                             type="number"
                             value={sampleRequestQty === "" ? "" : String(sampleRequestQty)}
-                            onChange={isDraft ? (v) => setSampleRequestQty(v === "" ? "" : Number(v)) : () => {}}
+                            onChange={
+                              isDraft
+                                ? (v) => {
+                                    setSampleRequestQty(v === "" ? "" : Number(v));
+                                    setPlatformOptionsSaved(false);
+                                  }
+                                : () => {}
+                            }
                           />
                         </div>
                       )}
