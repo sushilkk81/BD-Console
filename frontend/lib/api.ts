@@ -156,6 +156,42 @@ export async function listReferenceProducts(token: string): Promise<ReferencePro
   return resp.json();
 }
 
+export type LookedUpStrength = { strength: string; cartridge: string; fill_ml: number };
+export type StrengthLookup = {
+  found: boolean;
+  brand: string;
+  molecule: string | null;
+  device: string | null;
+  strengths: LookedUpStrength[];
+  citation: string | null;
+};
+export type ViscosityLookup = {
+  found: boolean;
+  brand: string;
+  visc_val: number | null;
+  citation: string | null;
+};
+
+export async function lookupStrengths(token: string, brand: string, market: string): Promise<StrengthLookup> {
+  const resp = await fetch(`/api/reference-lookup/strengths`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ brand, market }),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't look that up — try again.");
+  return resp.json();
+}
+
+export async function lookupViscosity(token: string, brand: string, molecule?: string): Promise<ViscosityLookup> {
+  const resp = await fetch(`/api/reference-lookup/viscosity`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ brand, molecule }),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't look that up — try again.");
+  return resp.json();
+}
+
 export async function getRequestDetail(token: string, id: number): Promise<RequestDetail> {
   const resp = await fetch(`/api/requests/${id}`, { headers: authHeaders(token) });
   if (!resp.ok) throw await parseError(resp, "We couldn't load that request — try again.");
