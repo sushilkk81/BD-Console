@@ -228,7 +228,8 @@ def test_create_request_with_strengths_seeds_sku_rows_from_reference_data(client
                         headers={"Authorization": f"Bearer {token}"})
     body = resp.json()
     assert len(body["sku_rows"]) == 1
-    assert body["sku_rows"][0] == {"id": body["sku_rows"][0]["id"], "strength": "1 mg", "cartridge": "3 mL", "fill_ml": 3.0}
+    assert body["sku_rows"][0] == {"id": body["sku_rows"][0]["id"], "strength": "1 mg", "cartridge": "3 mL",
+                                    "fill_ml": 3.0, "batch_size_l": None}
 
 
 def test_get_request_detail_not_found_for_non_owner_customer(client):
@@ -566,3 +567,75 @@ def test_submit_flips_status_and_locks_further_edits(
     locked = client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
                          json={"selections": []})
     assert locked.status_code == 409
+
+
+def test_update_platform_options_sets_fields_and_batch_sizes(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg", "2 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    sku_ids = {r["strength"]: r["id"] for r in created["sku_rows"]}
+
+    resp = client.put(f"/requests/{created['id']}/platform-options", headers={"Authorization": f"Bearer {token}"},
+                       json={
+                           "exhibit_batch_start": "2026-09-01", "exhibit_batch_end": "2026-09-15",
+                           "tentative_approval_months": 6,
+                           "assembly_machine_qualification": True, "assembly_qualification_qty": 2,
+                           "assembly_qualification_date": "2026-10-01",
+                           "platform_design_verification_request": True,
+                           "sample_request": True, "sample_request_qty": 50,
+                           "sku_batch_sizes": [
+                               {"sku_row_id": sku_ids["1 mg"], "batch_size_l": 10.0},
+                               {"sku_row_id": sku_ids["2 mg"], "batch_size_l": 5.0},
+                           ],
+                       })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["exhibit_batch_start"] == "2026-09-01"
+    assert body["exhibit_batch_end"] == "2026-09-15"
+    assert body["tentative_approval_months"] == 6
+    assert body["assembly_machine_qualification"] is True
+    assert body["assembly_qualification_qty"] == 2
+    assert body["assembly_qualification_date"] == "2026-10-01"
+    assert body["platform_design_verification_request"] is True
+    assert body["sample_request"] is True
+    assert body["sample_request_qty"] == 50
+    rows_by_strength = {r["strength"]: r for r in body["sku_rows"]}
+    assert rows_by_strength["1 mg"]["batch_size_l"] == 10.0
+    assert rows_by_strength["2 mg"]["batch_size_l"] == 5.0
+
+
+def test_update_platform_options_rejects_unknown_sku_row_id(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    resp = client.put(f"/requests/{created['id']}/platform-options", headers={"Authorization": f"Bearer {token}"},
+                       json={"sku_batch_sizes": [{"sku_row_id": 999999, "batch_size_l": 1.0}]})
+    assert resp.status_code == 422
+
+
+def test_update_platform_options_requires_ownership(client, seed_reference_product):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+
+    other_token, _ = _login(client, "someone@othercorp.com")
+    resp = client.put(f"/requests/{created['id']}/platform-options",
+                       headers={"Authorization": f"Bearer {other_token}"}, json={})
+    assert resp.status_code == 404
+
+
+def test_update_platform_options_requires_draft(client, seed_reference_product, seed_service_pricing):
+    token, _ = _login(client, "anaya@pfizer.com")
+    created = client.post("/requests", json={"brand": "Ozempic", "market": "US", "strengths": ["1 mg"]},
+                           headers={"Authorization": f"Bearer {token}"}).json()
+    client.post(f"/requests/{created['id']}/select-option", json={"chosen_option": 1},
+                headers={"Authorization": f"Bearer {token}"})
+    sku_id = created["sku_rows"][0]["id"]
+    client.put(f"/requests/{created['id']}/services", headers={"Authorization": f"Bearer {token}"},
+               json={"selections": [{"sku_row_id": sku_id, "standard_dv": True}]})
+    client.post(f"/requests/{created['id']}/submit", headers={"Authorization": f"Bearer {token}"})
+
+    resp = client.put(f"/requests/{created['id']}/platform-options",
+                       headers={"Authorization": f"Bearer {token}"}, json={})
+    assert resp.status_code == 409

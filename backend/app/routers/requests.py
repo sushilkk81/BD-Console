@@ -7,9 +7,10 @@ from app.db import get_db
 from app.deps import get_current_user, require_role
 from app.models import (Organization, OrgKamMap, PlatformSheet, Request, RequestMessage, ServicePricing,
                          ServiceSelection, SkuRow, User)
-from app.schemas import (BdReviewIn, KamAssessmentIn, MessageIn, MessageOut, PlatformOptionRow, PlatformOptionsOut,
-                          RequestCountOut, RequestCreate, RequestDetailOut, RequestOut, RequestStep1Update,
-                          RespondToCustomerIn, SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuRowOut)
+from app.schemas import (BdReviewIn, KamAssessmentIn, MessageIn, MessageOut, PlatformOptionRow,
+                          PlatformOptionsOut, PlatformOptionsUpdate, RequestCountOut, RequestCreate,
+                          RequestDetailOut, RequestOut, RequestStep1Update, RespondToCustomerIn,
+                          SelectOptionRequest, ServiceSelectionOut, ServicesUpdate, SkuBatchSizeIn, SkuRowOut)
 from app.services import platform_matching, reference_data
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -50,6 +51,15 @@ def serialize_requests(db: Session, reqs: list[Request], include_routing: bool =
             kam_cost_usd=float(r.kam_cost_usd) if r.kam_cost_usd is not None else None,
             kam_timeline_months=r.kam_timeline_months,
             kam_notes=r.kam_notes,
+            exhibit_batch_start=r.exhibit_batch_start,
+            exhibit_batch_end=r.exhibit_batch_end,
+            tentative_approval_months=r.tentative_approval_months,
+            assembly_machine_qualification=r.assembly_machine_qualification,
+            assembly_qualification_qty=r.assembly_qualification_qty,
+            assembly_qualification_date=r.assembly_qualification_date,
+            platform_design_verification_request=r.platform_design_verification_request,
+            sample_request=r.sample_request,
+            sample_request_qty=r.sample_request_qty,
         ))
     return out
 
@@ -59,7 +69,8 @@ def _serialize_detail(db: Session, req: Request, include_routing: bool = False) 
     selections = [sel for row in req.sku_rows for sel in row.service_selections]
     return RequestDetailOut(
         **base.model_dump(),
-        sku_rows=[SkuRowOut(id=r.id, strength=r.strength, cartridge=r.cartridge, fill_ml=float(r.fill_ml))
+        sku_rows=[SkuRowOut(id=r.id, strength=r.strength, cartridge=r.cartridge, fill_ml=float(r.fill_ml),
+                             batch_size_l=float(r.batch_size_l) if r.batch_size_l is not None else None)
                   for r in req.sku_rows],
         service_selections=[
             ServiceSelectionOut(id=s.id, sku_row_id=s.sku_row_id, standard_dv=s.standard_dv,
@@ -225,6 +236,35 @@ def update_request_step1(request_id: int, payload: RequestStep1Update, db: Sessi
         if sku_row_ids:
             db.query(ServiceSelection).filter(ServiceSelection.sku_row_id.in_(sku_row_ids)).delete(
                 synchronize_session=False)
+
+    db.commit()
+    db.refresh(req)
+    return _serialize_detail(db, req)
+
+
+@router.put("/{request_id}/platform-options", response_model=RequestDetailOut)
+def update_platform_options(request_id: int, payload: PlatformOptionsUpdate, db: Session = Depends(get_db),
+                             current_user: User = Depends(get_current_user)):
+    req = _owned_draft_or_404(db, request_id, current_user)
+
+    sku_row_ids = {r.id for r in req.sku_rows}
+    for entry in payload.sku_batch_sizes:
+        if entry.sku_row_id not in sku_row_ids:
+            raise HTTPException(422, f"sku_row_id {entry.sku_row_id} does not belong to this request")
+
+    req.exhibit_batch_start = payload.exhibit_batch_start
+    req.exhibit_batch_end = payload.exhibit_batch_end
+    req.tentative_approval_months = payload.tentative_approval_months
+    req.assembly_machine_qualification = payload.assembly_machine_qualification
+    req.assembly_qualification_qty = payload.assembly_qualification_qty
+    req.assembly_qualification_date = payload.assembly_qualification_date
+    req.platform_design_verification_request = payload.platform_design_verification_request
+    req.sample_request = payload.sample_request
+    req.sample_request_qty = payload.sample_request_qty
+
+    rows_by_id = {r.id: r for r in req.sku_rows}
+    for entry in payload.sku_batch_sizes:
+        rows_by_id[entry.sku_row_id].batch_size_l = entry.batch_size_l
 
     db.commit()
     db.refresh(req)

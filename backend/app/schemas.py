@@ -66,6 +66,7 @@ class SkuRowOut(BaseModel):
     strength: str
     cartridge: str
     fill_ml: float
+    batch_size_l: Optional[float] = None
 
 
 class RequestStep1Update(BaseModel):
@@ -76,6 +77,24 @@ class RequestStep1Update(BaseModel):
     device: Optional[str] = None
     differentiated: bool = False
     sku_rows: list[SkuRowIn]
+
+
+class SkuBatchSizeIn(BaseModel):
+    sku_row_id: int
+    batch_size_l: Optional[float] = None
+
+
+class PlatformOptionsUpdate(BaseModel):
+    exhibit_batch_start: Optional[dt.date] = None
+    exhibit_batch_end: Optional[dt.date] = None
+    tentative_approval_months: Optional[int] = None
+    assembly_machine_qualification: Optional[bool] = None
+    assembly_qualification_qty: Optional[int] = None
+    assembly_qualification_date: Optional[dt.date] = None
+    platform_design_verification_request: Optional[bool] = None
+    sample_request: Optional[bool] = None
+    sample_request_qty: Optional[int] = None
+    sku_batch_sizes: list[SkuBatchSizeIn] = []
 
 
 class ServiceSelectionIn(BaseModel):
@@ -158,6 +177,15 @@ class RequestOut(BaseModel):
     kam_cost_usd: Optional[float] = None
     kam_timeline_months: Optional[int] = None
     kam_notes: Optional[str] = None
+    exhibit_batch_start: Optional[dt.date] = None
+    exhibit_batch_end: Optional[dt.date] = None
+    tentative_approval_months: Optional[int] = None
+    assembly_machine_qualification: Optional[bool] = None
+    assembly_qualification_qty: Optional[int] = None
+    assembly_qualification_date: Optional[dt.date] = None
+    platform_design_verification_request: Optional[bool] = None
+    sample_request: Optional[bool] = None
+    sample_request_qty: Optional[int] = None
 
 
 class RequestDetailOut(RequestOut):
