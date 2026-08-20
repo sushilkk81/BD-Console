@@ -143,6 +143,11 @@ class PlatformOptionsOut(BaseModel):
     options: dict[str, list[PlatformOptionRow]]
 
 
+class ReferenceProductPresentation(BaseModel):
+    cartridge: str
+    fill_ml: float
+
+
 class ReferenceProductOut(BaseModel):
     brand: str
     molecule: str
@@ -151,6 +156,10 @@ class ReferenceProductOut(BaseModel):
     visc_val: float
     visc_ref: str
     cartridge: str
+    # Per-strength presentation (cartridge + fill volume), same data `presentation_for`
+    # uses server-side — exposed so the wizard can populate a strength's real values
+    # instead of falling back to the brand-level default cartridge / a guessed fill.
+    presentations: dict[str, ReferenceProductPresentation] = {}
 
 
 class RequestOut(BaseModel):

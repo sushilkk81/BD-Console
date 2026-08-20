@@ -19,7 +19,7 @@ def client():
         brand="Ozempic", molecule="Semaglutide", device="Pen Injector", dose="variable", visc="water",
         visc_val=1.4, cartridge="3 mL", strengths=["0.25 mg", "1 mg"], visc_ref="ref",
         mech_drive="torsion_spring", mech_dose="variable", mech_label="label", ob_ref="ob", ob_claims=["c"],
-        presentations={}, presentations_ref="",
+        presentations={"0.25 mg": ["1.5 mL", 1.5], "1 mg": ["3 mL", 3.0]}, presentations_ref="",
     ))
     session.commit()
     session.close()
@@ -54,4 +54,24 @@ def test_reference_products_lists_seeded_brands(client):
     assert body == [{
         "brand": "Ozempic", "molecule": "Semaglutide", "device": "Pen Injector",
         "strengths": ["0.25 mg", "1 mg"], "visc_val": 1.4, "visc_ref": "ref", "cartridge": "3 mL",
+        "presentations": {
+            "0.25 mg": {"cartridge": "1.5 mL", "fill_ml": 1.5},
+            "1 mg": {"cartridge": "3 mL", "fill_ml": 3.0},
+        },
     }]
+
+
+def test_reference_products_presentations_distinguish_cartridge_from_fill_ml(client):
+    """Regression for the customer-facing cartridge/fill-volume mapping bug: two strengths of
+    the same reference product must keep distinct, non-swapped cartridge and fill values."""
+    token = _login(client)
+    resp = client.get("/reference-products", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    presentations = resp.json()[0]["presentations"]
+
+    assert presentations["0.25 mg"]["cartridge"] == "1.5 mL"
+    assert presentations["0.25 mg"]["fill_ml"] == 1.5
+    assert presentations["1 mg"]["cartridge"] == "3 mL"
+    assert presentations["1 mg"]["fill_ml"] == 3.0
+    # The two strengths must not resolve to the same (swapped-looking) values.
+    assert presentations["0.25 mg"] != presentations["1 mg"]
