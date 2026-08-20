@@ -104,6 +104,7 @@ export type ReferenceProduct = {
   visc_val: number;
   visc_ref: string;
   cartridge: string;
+  presentations: Record<string, { cartridge: string; fill_ml: number }>;
 };
 
 export type PlatformOptionRow = {

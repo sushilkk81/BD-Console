@@ -153,7 +153,11 @@ export default function RequestWizardPage() {
   const currentRef = refProducts.find((p) => p.brand === brand) ?? null;
   const isDraft = detail?.status === "Draft";
 
-  function reconcileRowsForStrengths(next: string[]) {
+  // `ref` is passed explicitly rather than read from the `currentRef` closure — after a
+  // brand change, `currentRef` (derived from `brand` state) is still the *previous*
+  // render's value here, so falling back to it would silently apply the old reference
+  // product's cartridge default to the newly selected one.
+  function reconcileRowsForStrengths(next: string[], ref: ReferenceProduct | undefined) {
     setStrengths(next);
     setSkuRows((prev) => {
       const existing = new Map(prev.map((r) => [r.strength, r]));
@@ -161,14 +165,18 @@ export default function RequestWizardPage() {
         if (existing.has(s)) return existing.get(s)!;
         const live = liveLookupPresentations[s];
         if (live) return { strength: s, cartridge: live.cartridge, fill_ml: live.fill_ml };
-        const cart = currentRef?.cartridge ?? "3 mL";
+        // Real per-strength presentation from the reference data (same source the
+        // backend uses via presentation_for) — not a brand-level/guessed default.
+        const pres = ref?.presentations?.[s];
+        if (pres) return { strength: s, cartridge: pres.cartridge, fill_ml: pres.fill_ml };
+        const cart = ref?.cartridge ?? "3 mL";
         return { strength: s, cartridge: cart, fill_ml: 1.5 };
       });
     });
   }
 
   function resetForRefChange(ref: ReferenceProduct | undefined) {
-    reconcileRowsForStrengths(ref ? [...ref.strengths] : []);
+    reconcileRowsForStrengths(ref ? [...ref.strengths] : [], ref);
     setDevice(ref?.device ?? null);
     setDifferentiated(false);
     setViscosityVal("");
@@ -215,6 +223,10 @@ export default function RequestWizardPage() {
             visc_val: existing?.visc_val ?? 0,
             visc_ref: existing?.visc_ref ?? "",
             cartridge: result.strengths[0]?.cartridge ?? existing?.cartridge ?? "3 mL",
+            presentations: {
+              ...existing?.presentations,
+              ...Object.fromEntries(result.strengths.map((s) => [s.strength, { cartridge: s.cartridge, fill_ml: s.fill_ml }])),
+            },
           };
           return existing ? prev.map((p) => (p.brand === result.brand ? merged : p)) : [...prev, merged];
         });
@@ -583,7 +595,7 @@ export default function RequestWizardPage() {
                           checked={strengths.includes(s)}
                           onChange={(e) => {
                             const next = e.target.checked ? [...strengths, s] : strengths.filter((x) => x !== s);
-                            reconcileRowsForStrengths(next);
+                            reconcileRowsForStrengths(next, currentRef ?? undefined);
                           }}
                         />
                         {s}
