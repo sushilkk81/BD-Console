@@ -23,6 +23,25 @@ services:
       - key: TAVILY_API_KEY
         value: ""
 
+  # Monthly check for a new CMS Part D release. This app has no scheduler runtime; the
+  # check is a command, run here by Render's cron service. It only records what CMS
+  # publishes — a detected release still goes through the validation workflow before it
+  # can be promoted. If this stops running, freshness degrades to unknown rather than
+  # continuing to report the data as current.
+  - type: cron
+    name: bd-console-cms-metadata-check
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    schedule: "0 6 1 * *"
+    dockerCommand: python -m app.forecasting_engine.services.sources.cms_metadata_check
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bd-console-db
+          property: connectionString
+
 databases:
   - name: bd-console-db
     plan: free

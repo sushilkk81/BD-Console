@@ -491,3 +491,264 @@ export async function markNotificationRead(token: string, id: number): Promise<N
   if (!resp.ok) throw await parseError(resp, "We couldn't update that notification — try again.");
   return resp.json();
 }
+
+// --- Forecasting -------------------------------------------------------------
+// The backend router is mounted at /forecast; this proxy prepends /api, so the
+// client URLs below read /api/forecast/... like every other call in this file.
+
+export type ForecastMode = "epidemiology" | "observed_volume";
+export type PriceBasis = "per_dosage_unit" | "per_pack" | "per_api_kg";
+export type MetricKey = "patients" | "dosage_units" | "packs" | "api_kg" | "revenue";
+
+export type ForecastParameters = {
+  sku_row_id?: number | null;
+  molecule: string;
+  brand?: string | null;
+  geography: string;
+  indication?: string | null;
+  strength?: string | null;
+  dosage_form?: string | null;
+  forecast_start_year: number;
+  launch_year: number;
+  forecast_mode: ForecastMode;
+  target_population?: number | null;
+  population_basis?: "prevalence" | "incidence" | null;
+  treatment_basis?: "chronic" | "annual_course" | null;
+  reference_units?: number | null;
+  reference_year?: number | null;
+  annual_growth_rate?: number | null;
+  reference_coverage_note?: string | null;
+  base_peak_share: number;
+  upside_peak_share: number;
+  ramp_speed: number;
+  inflection_year: number;
+  units_per_patient_per_year?: number | null;
+  units_per_patient_basis?: string | null;
+  units_per_pack?: number | null;
+  active_ingredient_mg_per_unit?: number | null;
+  company_capture_share?: number | null;
+  probability_of_success?: number | null;
+  net_price?: string | null;
+  price_currency?: string | null;
+  price_basis?: PriceBasis | null;
+  source_observation_id?: number | null;
+  override_reason?: string | null;
+  overridden_source_value?: number | null;
+};
+
+export type Scenario = {
+  addressable_patients: number[] | null;
+  patients: number[] | null;
+  addressable_dosage_units: number[] | null;
+  business_dosage_units: number[] | null;
+  business_packs: number[] | null;
+  business_api_kg: number[] | null;
+  business_revenue: string[] | null;
+  risk_adjusted_business_dosage_units: number[] | null;
+};
+
+export type ProvenanceClass =
+  | "live_cms_api"
+  | "archived_cms_publication"
+  | "user_supplied_file"
+  | "manual_entry";
+
+export type SourceObservation = {
+  id: number | null;
+  source_kind: "cms_part_d" | "file_import" | "manual_entry";
+  source_url: string | null;
+  source_identifier: string | null;
+  molecule: string | null;
+  brand: string | null;
+  geography: string;
+  coverage: string;
+  period_label: string;
+  metric: string;
+  unit: string;
+  value: string | null;
+  currency: string | null;
+  strength: string | null;
+  dosage_form: string | null;
+  transformation: string;
+  ambiguous_match: boolean;
+  retrieved_at: string;
+  stale: boolean;
+  provenance_class: ProvenanceClass;
+  retrieval_url: string | null;
+  archive_capture_date: string | null;
+  content_sha256: string | null;
+};
+
+/** The three CMS source facts, reported and rendered independently. */
+export type CmsSourceStatus = {
+  dataset_title: string;
+  publication_url: string;
+  reporting_year: number | null;
+  latest_published_year: number;
+  file_verification: "verified" | "unrecognised" | "mismatch" | null;
+  file_sha256: string | null;
+  publication_freshness: "current" | "superseded" | "unknown";
+  published_on: string | null;
+  last_metadata_check_at: string | null;
+  last_metadata_check_status: string | null;
+  metadata_check_detail: string | null;
+  new_release_detected: boolean;
+  freshness_label: string;
+  active_release_status: string | null;
+  active_release_validated_at: string | null;
+  active_release_checks: { name: string; passed: boolean; detail: string }[] | null;
+  api_connectivity: "reachable" | "blocked" | "error" | "not_checked";
+  api_endpoint: string;
+  api_http_status: number | null;
+  api_checked_at: string | null;
+  akamai_reference: string | null;
+  api_detail: string | null;
+  support_summary: string | null;
+  last_successful_refresh: string | null;
+  last_refresh_provenance: ProvenanceClass | null;
+  retrieval_url: string | null;
+  archive_capture_date: string | null;
+  observation_count: number;
+};
+
+export type Forecast = {
+  deal_id: number;
+  request_id: number;
+  sku_row_id: number | null;
+  revision: number;
+  model_version: string;
+  forecast_mode: ForecastMode;
+  calendar_years: number[];
+  base_case: Scenario;
+  upside_case: Scenario;
+  unit_metadata: {
+    patients: string | null;
+    dosage_units: string | null;
+    packs: string | null;
+    api_kg: string | null;
+    revenue: string | null;
+  };
+  assumption_summary: Record<string, unknown>;
+  source_references: SourceObservation[];
+  updated_at: string;
+  warnings: string[];
+};
+
+export type ForecastCollection = {
+  request_id: number;
+  granularity: "request" | "sku" | "none";
+  forecasts: Forecast[];
+  warnings: string[];
+};
+
+/** Why a source returned nothing. These are never conflated in the UI: only
+ *  "no_matching_records" says anything about the molecule itself. */
+export type SourceStatus =
+  | "available"
+  | "no_matching_records"
+  | "configuration_incomplete"
+  | "api_unavailable";
+
+export type SourceSearch = {
+  query_echo: Record<string, unknown>;
+  results: SourceObservation[];
+  available: boolean;
+  status: SourceStatus;
+  unavailable_reason: string | null;
+  truncated: boolean;
+  warnings: string[];
+};
+
+export async function getForecast(token: string, requestId: number): Promise<ForecastCollection> {
+  const resp = await fetch(`/api/forecast/${requestId}`, { headers: authHeaders(token) });
+  if (!resp.ok) throw await parseError(resp, "We couldn't load the forecast — try again.");
+  return resp.json();
+}
+
+export async function upsertForecast(
+  token: string,
+  requestId: number,
+  revision: number,
+  parameters: ForecastParameters,
+  changeReason?: string
+): Promise<ForecastCollection> {
+  const resp = await fetch(`/api/forecast/upsert`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({
+      request_id: requestId,
+      revision,
+      parameters,
+      change_reason: changeReason ?? null,
+    }),
+  });
+  if (!resp.ok) {
+    // A 409 here means someone else saved first — the caller reloads rather than retrying.
+    throw await parseError(resp, "We couldn't save those assumptions — try again.");
+  }
+  return resp.json();
+}
+
+export async function searchForecastSources(
+  token: string,
+  query: { request_id: number; geography: string; molecule?: string; brand?: string; period?: string }
+): Promise<SourceSearch> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  });
+  const resp = await fetch(`/api/forecast/sources/search?${params.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't search utilization sources — try again.");
+  return resp.json();
+}
+
+export async function importForecastSources(
+  token: string,
+  requestId: number,
+  csv: string
+): Promise<SourceSearch> {
+  const resp = await fetch(`/api/forecast/sources/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ request_id: requestId, format: "csv", payload: csv }),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't import that file — try again.");
+  return resp.json();
+}
+
+/** Ingest the official CMS Part D bulk CSV. Used when the CMS API is unreachable —
+ *  the file is the publisher's own artifact and provenance is recorded as its CMS URL. */
+export async function ingestCmsPartDFile(
+  token: string,
+  body: {
+    request_id: number;
+    payload: string;
+    molecule?: string;
+    brand?: string;
+    data_year?: number;
+    retrieval_note?: string;
+  }
+): Promise<SourceSearch> {
+  const resp = await fetch(`/api/forecast/sources/cms-part-d/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw await parseError(resp, "We couldn't read that CMS file — try again.");
+  return resp.json();
+}
+
+export async function getCmsSourceStatus(
+  token: string,
+  requestId: number,
+  checkApi = false
+): Promise<CmsSourceStatus> {
+  const resp = await fetch(
+    `/api/forecast/sources/cms-part-d/status?request_id=${requestId}&check_api=${checkApi}`,
+    { headers: authHeaders(token) }
+  );
+  if (!resp.ok) throw await parseError(resp, "We couldn't read the CMS source status — try again.");
+  return resp.json();
+}
