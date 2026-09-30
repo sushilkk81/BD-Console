@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ForecastPanel } from "@/components/ForecastPanel";
 import {
   ApiError, Message, RequestDetail, RequestRow,
   getMessages, getRequestDetail, listRequests, postMessage, respondToCustomer, submitKamAssessment,
@@ -267,6 +268,7 @@ export default function KamWorkspacePage() {
                   </ul>
                 </div>
               )}
+              <ForecastPanel key={active.id} token={token} requestId={active.id} defaultBrand={active.brand} defaultMarket={active.market} allowFunnelTransfer />
               {actionError && <Banner message={actionError} onDismiss={() => setActionError("")} />}
 
               {activeDetail && (active.status.startsWith("Assigned to ") || active.status === "Revision Requested") && (

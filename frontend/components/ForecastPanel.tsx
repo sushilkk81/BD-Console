@@ -439,12 +439,17 @@ export function ForecastPanel({
   requestId,
   defaultBrand,
   defaultMarket,
+  allowFunnelTransfer = false,
 }: {
   token: string;
   requestId: number;
   defaultBrand?: string;
   defaultMarket?: string;
+  allowFunnelTransfer?: boolean;
 }) {
+  const [transferLink, setTransferLink] = useState("");
+  const [transferStatus, setTransferStatus] = useState("");
+  const [transferring, setTransferring] = useState(false);
   const [collection, setCollection] = useState<ForecastCollection | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -465,6 +470,15 @@ export function ForecastPanel({
   const [checkingApi, setCheckingApi] = useState(false);
 
   const forecast = collection?.forecasts[0] ?? null;
+  async function sendToFunnel() {
+    setTransferring(true); setTransferStatus("");
+    try {
+      const r = await fetch(`/api/forecast/${requestId}/funnel-transfer`, {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({transfer_link:transferLink})});
+      const d = await r.json();
+      if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Transfer failed. Check your link.");
+      setTransferStatus("Saved forecast transferred. Refresh the linked Funnel opportunity’s Customer review workspace."); setTransferLink("");
+    } catch (e) { setTransferStatus((e as Error).message); } finally { setTransferring(false); }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -668,6 +682,13 @@ export function ForecastPanel({
           )}
         </div>
 
+        {forecast && allowFunnelTransfer && <div className="rounded-lg border border-ink-700/10 p-4">
+          <h3 className="font-display font-semibold">Send to Funnel KAM review</h3>
+          <p className="text-xs my-2">Request {requestId}. Create a one-use forecast transfer link in the shared Funnel, then paste it here. Only the saved forecast, assumptions and source references are sent; unsaved edits are excluded.</p>
+          <TextField name="funnel-transfer-link" label="Funnel forecast transfer link (internal only)" value={transferLink} onChange={setTransferLink} />
+          <Button variant="secondary" disabled={transferring || !transferLink.trim()} onClick={()=>void sendToFunnel()}>{transferring ? "Transferring…" : "Send saved forecast to Funnel"}</Button>
+          {transferStatus && <p role="status" className="text-sm mt-2">{transferStatus}</p>}
+        </div>}
         {loadError && <Banner message={loadError} onDismiss={() => setLoadError("")} />}
         {conflict && (
           <div

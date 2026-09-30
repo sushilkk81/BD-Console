@@ -302,3 +302,46 @@ def get_forecast(
     """Return the saved forecast for a request. Never fetches upstream data."""
     forecast_service.authorize_request(db, request_id, current_user)
     return forecast_service.load_collection(db, request_id)
+
+
+class FunnelTransferIn(schemas.StrictModel):
+    transfer_link: str
+
+
+@router.post("/{request_id}/funnel-transfer")
+def transfer_to_funnel(
+    request_id: int,
+    payload: FunnelTransferIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send only the saved, authorized forecast using a one-use Funnel capability.
+
+    The URL is fixed to Shaily's Funnel deployment: never an arbitrary fetch target.
+    No BD session credential or customer/internal messages leave this endpoint.
+    """
+    from urllib.parse import urlsplit
+    import httpx
+
+    if current_user.role not in ("BD Manager", "Key Account Manager"):
+        raise HTTPException(403, "Only Shaily BD staff can transfer forecasts")
+    forecast_service.authorize_request(db, request_id, current_user)
+    target = urlsplit(payload.transfer_link.strip())
+    if (target.scheme != "https" or target.netloc != "shaily-commercial-navigator-demo.vercel.app"
+            or target.path != "/api/funnel/forecast-transfer" or target.query
+            or not target.fragment or len(target.fragment) > 250):
+        raise HTTPException(422, "Paste a valid transfer link created in the Shaily Funnel review workspace")
+    collection = forecast_service.load_collection(db, request_id)
+    if not collection.forecasts:
+        raise HTTPException(409, "Save a forecast before transferring it")
+    try:
+        result = httpx.post(
+            "https://shaily-commercial-navigator-demo.vercel.app/api/funnel/forecast-transfer",
+            headers={"Authorization": "Bearer " + target.fragment},
+            json=collection.model_dump(mode="json"), timeout=25, follow_redirects=False,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(502, "Funnel could not be reached. Retry or create a new transfer link.")
+    if result.status_code != 200:
+        raise HTTPException(409, "Funnel rejected the transfer. Check the request number, link expiry and forecast revision; create a fresh link if needed.")
+    return {"transferred": True, "request_id": request_id}

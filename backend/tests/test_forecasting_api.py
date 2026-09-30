@@ -958,3 +958,29 @@ def test_promoting_a_new_release_preserves_the_previous_one(client):
     assert rows[1].is_active is True
     assert rows[0].content_sha256 != rows[1].content_sha256
     db.close()
+
+
+def test_funnel_transfer_authorization_and_fixed_destination(client, monkeypatch):
+    import httpx
+    customer = _login(client, "customer@link-example.com")
+    manager = _login(client, "manager@shaily.com", role="BD Manager")
+    request_id = _make_request(client, customer)
+    _upsert(client, manager, request_id, EPI_PARAMS)
+    url = f"/forecast/{request_id}/funnel-transfer"
+    link = "https://shaily-commercial-navigator-demo.vercel.app/api/funnel/forecast-transfer#opp.secret"
+    assert client.post(url, headers=_headers(customer), json={"transfer_link": link}).status_code == 403
+    assert client.post(url, headers=_headers(manager), json={"transfer_link": "https://evil.example/api/funnel/forecast-transfer#secret"}).status_code == 422
+    calls = []
+    def post(target, **kwargs):
+        calls.append((target, kwargs))
+        return httpx.Response(200, json={"received": True})
+    monkeypatch.setattr(httpx, "post", post)
+    response = client.post(url, headers=_headers(manager), json={"transfer_link": link})
+    assert response.status_code == 200, response.text
+    assert len(calls) == 1
+    target, kwargs = calls[0]
+    assert target == link.split("#")[0]
+    assert kwargs["headers"]["Authorization"] == "Bearer opp.secret"
+    assert kwargs["json"]["request_id"] == request_id
+    assert "access_token" not in kwargs["json"]
+    assert kwargs["follow_redirects"] is False
