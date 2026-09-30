@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config import get_settings
 from app.db import Base
 from app import models  # noqa: F401 — registers models on Base.metadata
+from app.forecasting_engine.models import db_models  # noqa: F401 — same, for forecasting
 
 config = context.config
 # Use DATABASE_URL env var if set, otherwise use settings

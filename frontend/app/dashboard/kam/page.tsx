@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ForecastPanel } from "@/components/ForecastPanel";
 import {
   ApiError, Message, RequestDetail, RequestRow,
   getMessages, getRequestDetail, listRequests, postMessage, respondToCustomer, submitKamAssessment,
@@ -18,6 +19,10 @@ export default function KamWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("request"));
+    if (Number.isSafeInteger(id) && id > 0) setActiveId(id);
+  }, []);
   const [activeDetail, setActiveDetail] = useState<RequestDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [costInput, setCostInput] = useState("");
@@ -267,6 +272,7 @@ export default function KamWorkspacePage() {
                   </ul>
                 </div>
               )}
+              <ForecastPanel key={active.id} token={token} requestId={active.id} defaultBrand={active.brand} defaultMarket={active.market} allowFunnelTransfer />
               {actionError && <Banner message={actionError} onDismiss={() => setActionError("")} />}
 
               {activeDetail && (active.status.startsWith("Assigned to ") || active.status === "Revision Requested") && (

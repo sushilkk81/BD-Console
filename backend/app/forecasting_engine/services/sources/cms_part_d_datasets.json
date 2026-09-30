@@ -1,0 +1,82 @@
+{
+  "verified": true,
+  "verified_at": "2026-09-29",
+  "verified_by": "Verified against official HHS/CMS published metadata; see verification_evidence.",
+  "verification_evidence": [
+    {
+      "fact": "Dataset identity, API dataset UUID, dictionary URL and bulk CSV URL",
+      "source": "https://datahub.hhs.gov/api/views/xzs3-ddeh.json and the dataset's HHS archive log https://healthdata.gov/resource/hc4a-gw37.json (field metadata_updates.updates.additionalAccessPoints)",
+      "note": "datahub.hhs.gov record 'Medicare Part D Spending by Drug' (attribution: data.cms.gov) is a link-only (viewType href) record whose access points name the CMS API, dictionary and CSV endpoints verbatim."
+    },
+    {
+      "fact": "Publisher, contact, annual update frequency, temporal applicability 2024-01-01/2024-12-31, homepage",
+      "source": "https://datahub.hhs.gov/api/views/xzs3-ddeh.json (metadata.custom_fields['Common Core'])"
+    },
+    {
+      "fact": "Column names, actual values and the duplicate Overall/manufacturer row structure",
+      "source": "The official CMS file DSD_PTD_RY26_P04_V10_DY24_BGM.csv itself, read in full (14536 data rows, sha256 5dcc9d7bd7d7f88d9f6b24485c06d961ed6d70f9aa6deffa50dd47a6854c2a55 decompressed)"
+    },
+    {
+      "fact": "Spending is gross drug cost and excludes manufacturer rebates and other price concessions",
+      "source": "Dataset description, https://datahub.hhs.gov/api/views/xzs3-ddeh.json"
+    }
+  ],
+  "access_note": "data.cms.gov/data-api and data.cms.gov/sites/default/files return HTTP 403 (Akamai edge) to automated clients from every environment tested, including the deployment container, while data.cms.gov/provider-data and www.cms.gov return 200 from the same address. No API key exists for this dataset, so the 403 is not an authentication failure. File ingestion is the supported route; API connectivity is reported separately and re-checked on demand.",
+  "dataset": {
+    "title": "Medicare Part D Spending by Drug",
+    "publisher": "Centers for Medicare & Medicaid Services",
+    "contact_email": "IPAG_Data_Products@cms.hhs.gov",
+    "homepage": "https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-d-spending-by-drug",
+    "api_dataset_uuid": "7e0b4365-fd63-4a29-8f5e-e0ac9f66a81b",
+    "api_url": "https://data.cms.gov/data-api/v1/dataset/7e0b4365-fd63-4a29-8f5e-e0ac9f66a81b/data",
+    "dictionary_url": "https://data.cms.gov/data-api/v1/dataset/7e0b4365-fd63-4a29-8f5e-e0ac9f66a81b/dictionary",
+    "csv_dataset_uuid": "da5ff50b-e5da-42de-b68b-6cfac1f64f35",
+    "csv_url": "https://data.cms.gov/sites/default/files/2026-06/98218f98-166c-4723-8438-c344a4ef96a6/DSD_PTD_RY26_P04_V10_DY24_BGM.csv",
+    "csv_filename": "DSD_PTD_RY26_P04_V10_DY24_BGM.csv",
+    "methodology_url": "https://data.cms.gov/sites/default/files/2026-06/d7e0a571-9d08-40ec-8278-1b2300f59424/DSD_PTD_RY26_20260603_Methodology_WDDSE_508.pdf",
+    "release_year": 2026,
+    "latest_data_year": 2024,
+    "available_data_years": [
+      2020,
+      2021,
+      2022,
+      2023,
+      2024
+    ],
+    "update_frequency": "R/P1Y",
+    "geography": "US",
+    "coverage": "Drugs prescribed to beneficiaries enrolled in Medicare Part D and generally self-administered.",
+    "spending_basis": "Gross drug cost: total spending for the prescription claim including Medicare, plan and beneficiary payments. Excludes manufacturer rebates and other price concessions, which CMS is prohibited from disclosing. Not manufacturer net revenue.",
+    "brand_name_column": "Brnd_Name",
+    "generic_name_column": "Gnrc_Name",
+    "manufacturer_column": "Mftr_Name",
+    "manufacturer_total_label": "Overall",
+    "year_suffixed_metric_columns": {
+      "spending": "Tot_Spndng_{year}",
+      "dosage_units": "Tot_Dsg_Unts_{year}",
+      "claims": "Tot_Clms_{year}",
+      "beneficiaries": "Tot_Benes_{year}"
+    },
+    "verified_file": {
+      "content_sha256": "8a8919d12f3e212d08cd21d22f6ce5d383d8a5226eb6c570f14e9e6e94fe3988",
+      "content_sha256_basis": "SHA-256 of the CSV text as ingested (UTF-8, BOM stripped). This is the digest the ingestor computes and compares against.",
+      "raw_file_sha256": "5dcc9d7bd7d7f88d9f6b24485c06d961ed6d70f9aa6deffa50dd47a6854c2a55",
+      "raw_file_sha256_basis": "SHA-256 of the decompressed file exactly as downloaded, for a human checking the download with shasum(1). CMS serves it gzip-encoded.",
+      "content_bytes": 5326806,
+      "data_row_count": 14536,
+      "note": "The contents of this file were read in full on 2026-09-29 to confirm the column names and values. A file whose digest differs is not an error \u2014 CMS reissues these \u2014 only a copy that was not the one verified by hand; columns are resolved from its own header regardless."
+    },
+    "archive_retrieval": {
+      "label": "archived CMS publication",
+      "archive_host": "web.archive.org",
+      "retrieval_url": "https://web.archive.org/web/20260923112137id_/https://data.cms.gov/sites/default/files/2026-06/98218f98-166c-4723-8438-c344a4ef96a6/DSD_PTD_RY26_P04_V10_DY24_BGM.csv",
+      "archive_capture_date": "2026-09-23T11:21:37Z",
+      "retrieved_at": "2026-09-29T00:00:00Z",
+      "note": "The Internet Archive's capture of the CMS publication URL. This is an archived copy of a CMS publication, NOT live access to data.cms.gov, and is labelled as such on every observation it produces."
+    },
+    "metadata_url": "https://datahub.hhs.gov/api/views/xzs3-ddeh.json",
+    "metadata_source": "HHS catalogue record for the CMS dataset (attribution: data.cms.gov)",
+    "published_on": "2026-07-10",
+    "published_on_basis": "rowsUpdatedAt on the HHS catalogue record for the 2024 reporting-year release."
+  }
+}

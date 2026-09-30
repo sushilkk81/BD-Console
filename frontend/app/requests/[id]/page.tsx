@@ -30,6 +30,7 @@ import { Button } from "@/components/Button";
 import { SelectField } from "@/components/SelectField";
 import { TextField } from "@/components/TextField";
 import { MessageThread } from "@/components/MessageThread";
+import { ForecastPanel } from "@/components/ForecastPanel";
 
 const CART_SIZES = ["1.5 mL", "3 mL", "1 mL PFS", "3 mL PFS", "1 mL Bespoke"];
 const RESPONDED_STATUSES = ["Responded to Customer", "Customer Query"];
@@ -1041,23 +1042,33 @@ export default function RequestWizardPage() {
               </>
             )}
             {step === "cost" && detail && (
-              <StepCost
-                detail={detail}
-                serviceRows={serviceRows}
-                setServiceRows={setServiceRows}
-                comment={comment}
-                setComment={setComment}
-                urgency={urgency}
-                setUrgency={setUrgency}
-                isDraft={isDraft}
-                estimatedTotal={estimateTotal()}
-                error={servicesError}
-                onDismissError={() => setServicesError("")}
-                saving={savingServices}
-                submitting={submittingRequest}
-                submitBanner={submitBanner}
-                onSubmit={handleSubmitRequest}
-              />
+              <>
+                <StepCost
+                  detail={detail}
+                  serviceRows={serviceRows}
+                  setServiceRows={setServiceRows}
+                  comment={comment}
+                  setComment={setComment}
+                  urgency={urgency}
+                  setUrgency={setUrgency}
+                  isDraft={isDraft}
+                  estimatedTotal={estimateTotal()}
+                  error={servicesError}
+                  onDismissError={() => setServicesError("")}
+                  saving={savingServices}
+                  submitting={submittingRequest}
+                  submitBanner={submitBanner}
+                  onSubmit={handleSubmitRequest}
+                />
+                {token && (
+                  <ForecastPanel
+                    token={token}
+                    requestId={requestId}
+                    defaultBrand={detail.brand}
+                    defaultMarket={detail.market}
+                  />
+                )}
+              </>
             )}
           </>
         )}
