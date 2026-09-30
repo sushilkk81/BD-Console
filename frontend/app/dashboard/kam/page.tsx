@@ -19,6 +19,10 @@ export default function KamWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get("request"));
+    if (Number.isSafeInteger(id) && id > 0) setActiveId(id);
+  }, []);
   const [activeDetail, setActiveDetail] = useState<RequestDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [costInput, setCostInput] = useState("");
